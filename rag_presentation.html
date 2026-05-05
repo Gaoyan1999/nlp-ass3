@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resume → Job RAG Matcher · Implementation Walkthrough</title>
+
+    <!-- Fonts: Archivo (display) + Nunito (body), Swiss-modern with a Notion-clean feel -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=Nunito:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /* =========================================================
+         THEME TOKENS — Swiss Modern, lightly tuned for Notion calm
+         Modify these to retheme the entire deck
+         ========================================================= */
+      :root {
+        /* Surface / ink */
+        --bg-paper: #fafaf7;
+        --bg-soft: #f1f1ec;
+        --ink: #111111;
+        --ink-2: #2a2a2a;
+        --muted: #6b6b6b;
+        --rule: #1a1a1a;
+        --rule-soft: rgba(17, 17, 17, 0.08);
+
+        /* Accent — Swiss red */
+        --accent: #e63312;
+        --accent-soft: #ffe7e1;
+
+        /* Stage palette for the pipeline */
+        --s1: #1a1a1a;
+        --s2: #1a1a1a;
+        --s3: #1a1a1a;
+
+        /* Typography */
+        --font-display: "Archivo", sans-serif;
+        --font-body: "Nunito", sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+
+        --title-size: clamp(2rem, 6vw, 4.75rem);
+        --h2-size: clamp(1.4rem, 3.6vw, 2.6rem);
+        --h3-size: clamp(1rem, 2.2vw, 1.4rem);
+        --body-size: clamp(0.78rem, 1.15vw, 1rem);
+        --small-size: clamp(0.65rem, 0.95vw, 0.85rem);
+        --tiny-size: clamp(0.58rem, 0.8vw, 0.72rem);
+
+        --slide-padding: clamp(1.25rem, 4vw, 4rem);
+        --content-gap: clamp(0.6rem, 1.6vw, 1.5rem);
+        --element-gap: clamp(0.3rem, 0.9vw, 0.85rem);
+
+        /* Motion */
+        --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        --dur: 0.7s;
+      }
+
+      /* =========================================================
+         RESET
+         ========================================================= */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      /* === VIEWPORT-BASE: included verbatim per skill spec === */
+      html,
+      body {
+        height: 100%;
+        overflow-x: hidden;
+      }
+      html {
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+      }
+      .slide {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .slide-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-height: 100%;
+        overflow: hidden;
+        padding: var(--slide-padding);
+      }
+      .card,
+      .container,
+      .content-box {
+        max-width: min(90vw, 1000px);
+        max-height: min(80vh, 700px);
+      }
+      .feature-list,
+      .bullet-list {
+        gap: clamp(0.4rem, 1vh, 1rem);
+      }
+      .feature-list li,
+      .bullet-list li {
+        font-size: var(--body-size);
+        line-height: 1.4;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+        gap: clamp(0.5rem, 1.5vw, 1rem);
+      }
+      img,
+      .image-container {
+        max-width: 100%;
+        max-height: min(50vh, 400px);
+        object-fit: contain;
+      }
+      @media (max-height: 700px) {
+        :root {
+          --slide-padding: clamp(0.75rem, 3vw, 2rem);
+          --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+          --title-size: clamp(1.4rem, 4.5vw, 2.6rem);
+          --h2-size: clamp(1.1rem, 3vw, 1.85rem);
+        }
+      }
+      @media (max-height: 600px) {
+        :root {
+          --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+          --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+          --title-size: clamp(1.1rem, 4vw, 2rem);
+          --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+        }
+        .nav-dots,
+        .keyboard-hint,
+        .decorative {
+          display: none;
+        }
+      }
+      @media (max-height: 500px) {
+        :root {
+          --slide-padding: clamp(0.4rem, 2vw, 1rem);
+          --title-size: clamp(1rem, 3.5vw, 1.5rem);
+          --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+          --body-size: clamp(0.65rem, 1vw, 0.85rem);
+        }
+      }
+      @media (max-width: 600px) {
+        :root {
+          --title-size: clamp(1.25rem, 7vw, 2.5rem);
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.2s !important;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+
+      /* =========================================================
+         GLOBAL TYPOGRAPHY & SURFACES
+         ========================================================= */
+      body {
+        background: var(--bg-paper);
+        color: var(--ink);
+        font-family: var(--font-body);
+        font-weight: 400;
+        font-size: var(--body-size);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: var(--font-display);
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+        color: var(--ink);
+      }
+
+      code,
+      .mono {
+        font-family: var(--font-mono);
+        font-size: 0.92em;
+      }
+
+      /* Subtle paper grid — visible but quiet, recalls Swiss grids without shouting */
+      .slide::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(to right, var(--rule-soft) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--rule-soft) 1px, transparent 1px);
+        background-size: clamp(40px, 5vw, 80px) clamp(40px, 5vw, 80px);
+        pointer-events: none;
+        opacity: 0.6;
+      }
+
+      /* =========================================================
+         SLIDE CHROME — page header, slide number, top rule
+         ========================================================= */
+      .meta-top {
+        position: absolute;
+        top: clamp(0.9rem, 2vw, 1.75rem);
+        left: var(--slide-padding);
+        right: var(--slide-padding);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--tiny-size);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--ink);
+        z-index: 5;
+      }
+      .meta-top .left {
+        display: flex;
+        align-items: center;
+        gap: clamp(0.5rem, 1.2vw, 1rem);
+      }
+      .meta-top .dot {
+        width: 0.55em;
+        height: 0.55em;
+        background: var(--accent);
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .meta-top .right {
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      .meta-bottom {
+        position: absolute;
+        bottom: clamp(0.9rem, 2vw, 1.75rem);
+        left: var(--slide-padding);
+        right: var(--slide-padding);
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: var(--tiny-size);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        z-index: 5;
+      }
+
+      /* Top hairline rule under meta */
+      .slide::after {
+        content: "";
+        position: absolute;
+        top: clamp(2.3rem, 4.5vw, 3.5rem);
+        left: var(--slide-padding);
+        right: var(--slide-padding);
+        height: 1px;
+        background: var(--rule);
+        opacity: 0.85;
+        pointer-events: none;
+        z-index: 4;
+      }
+
+      /* =========================================================
+         REVEAL ANIMATIONS — staggered fade up
+         ========================================================= */
+      .reveal {
+        opacity: 0;
+        transform: translateY(28px);
+        transition:
+          opacity var(--dur) var(--ease),
+          transform var(--dur) var(--ease);
+      }
+      .slide.visible .reveal {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .slide.visible .reveal.r1 { transition-delay: 0.05s; }
+      .slide.visible .reveal.r2 { transition-delay: 0.18s; }
+      .slide.visible .reveal.r3 { transition-delay: 0.31s; }
+      .slide.visible .reveal.r4 { transition-delay: 0.44s; }
+      .slide.visible .reveal.r5 { transition-delay: 0.57s; }
+      .slide.visible .reveal.r6 { transition-delay: 0.70s; }
+      .slide.visible .reveal.r7 { transition-delay: 0.83s; }
+
+      /* Accent-bar reveal (drawing line) for hero titles */
+      .accent-bar {
+        display: block;
+        height: clamp(4px, 0.7vw, 7px);
+        width: clamp(48px, 7vw, 96px);
+        background: var(--accent);
+        margin-bottom: clamp(0.6rem, 1.2vw, 1rem);
+        transform: scaleX(0);
+        transform-origin: left center;
+        transition: transform 0.9s var(--ease) 0.2s;
+      }
+      .slide.visible .accent-bar {
+        transform: scaleX(1);
+      }
+
+      /* =========================================================
+         SLIDE 1 — TITLE
+         ========================================================= */
+      .title-slide .slide-content {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: clamp(1rem, 3vw, 3rem);
+        align-items: center;
+        padding-top: clamp(4rem, 8vw, 7rem);
+        padding-bottom: clamp(4rem, 8vw, 6rem);
+      }
+      .title-slide h1 {
+        font-weight: 900;
+        font-size: clamp(2.2rem, 7.5vw, 6rem);
+        letter-spacing: -0.035em;
+      }
+      .title-slide h1 .accent-word {
+        color: var(--accent);
+      }
+      .title-slide .subtitle {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: clamp(0.85rem, 1.5vw, 1.15rem);
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: var(--muted);
+        margin-top: clamp(0.6rem, 1.2vw, 1rem);
+      }
+      .title-aside {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(0.6rem, 1.4vw, 1.1rem);
+        border-left: 1px solid var(--rule);
+        padding-left: clamp(1rem, 2vw, 2rem);
+      }
+      .title-aside .stat {
+        display: flex;
+        flex-direction: column;
+      }
+      .title-aside .stat-num {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(1.4rem, 3vw, 2.4rem);
+        line-height: 1;
+        color: var(--ink);
+      }
+      .title-aside .stat-num em {
+        color: var(--accent);
+        font-style: normal;
+      }
+      .title-aside .stat-label {
+        font-size: var(--small-size);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        margin-top: 0.3rem;
+      }
+      .title-marker {
+        position: absolute;
+        right: var(--slide-padding);
+        bottom: clamp(4.5rem, 9vw, 7rem);
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(7rem, 22vw, 18rem);
+        color: var(--bg-soft);
+        line-height: 0.85;
+        z-index: 0;
+        user-select: none;
+      }
+      @media (max-width: 760px) {
+        .title-slide .slide-content {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+        .title-aside {
+          border-left: none;
+          border-top: 1px solid var(--rule);
+          padding-left: 0;
+          padding-top: clamp(0.8rem, 2vw, 1.5rem);
+        }
+        .title-marker {
+          display: none;
+        }
+      }
+
+      /* =========================================================
+         SLIDE 2 — THE PROBLEM (split contrast)
+         ========================================================= */
+      .problem-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: clamp(0.8rem, 2vw, 1.6rem);
+        margin-top: clamp(0.8rem, 2vw, 1.6rem);
+      }
+      .problem-card {
+        border: 1px solid var(--rule);
+        padding: clamp(0.9rem, 2vw, 1.6rem);
+        background: var(--bg-paper);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-height: clamp(120px, 22vh, 220px);
+      }
+      .problem-card.bad::before,
+      .problem-card.good::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: clamp(4px, 0.7vw, 7px);
+      }
+      .problem-card.bad::before {
+        background: var(--ink);
+      }
+      .problem-card.good::before {
+        background: var(--accent);
+      }
+      .problem-card .label {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--small-size);
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--muted);
+      }
+      .problem-card .quote {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.95rem, 2vw, 1.4rem);
+        line-height: 1.25;
+        color: var(--ink);
+      }
+      .problem-card .quote .term {
+        background: var(--accent-soft);
+        padding: 0 0.25em;
+      }
+      .problem-card .verdict {
+        font-size: var(--small-size);
+        color: var(--muted);
+      }
+
+      /* =========================================================
+         SLIDE 3 — PIPELINE (HERO DIAGRAM)
+         ========================================================= */
+      .pipeline-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(0.6rem, 1.4vw, 1.2rem);
+        margin-top: clamp(0.6rem, 1.5vw, 1.2rem);
+      }
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: clamp(0.3rem, 0.7vw, 0.65rem);
+        align-items: stretch;
+      }
+      .stage {
+        position: relative;
+        background: var(--bg-paper);
+        border: 1px solid var(--rule);
+        padding: clamp(0.55rem, 1.1vw, 0.95rem);
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-height: clamp(110px, 18vh, 170px);
+      }
+      .stage .stage-num {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(0.65rem, 0.95vw, 0.85rem);
+        color: var(--accent);
+        letter-spacing: 0.1em;
+      }
+      .stage .stage-name {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(0.78rem, 1.2vw, 1.05rem);
+        line-height: 1.1;
+        margin-top: 0.15rem;
+      }
+      .stage .stage-meta {
+        font-family: var(--font-mono);
+        font-size: clamp(0.55rem, 0.85vw, 0.7rem);
+        color: var(--muted);
+        margin-top: auto;
+        line-height: 1.35;
+      }
+      /* Arrow between stages */
+      .stage:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: calc(-1 * clamp(0.3rem, 0.7vw, 0.65rem));
+        top: 50%;
+        transform: translate(50%, -50%);
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(0.7rem, 1.2vw, 1rem);
+        color: var(--accent);
+        background: var(--bg-paper);
+        padding: 0 0.15em;
+        z-index: 2;
+      }
+      .pipeline-legend {
+        display: flex;
+        justify-content: space-between;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--tiny-size);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--muted);
+        border-top: 1px solid var(--rule);
+        padding-top: clamp(0.4rem, 1vw, 0.7rem);
+      }
+      .pipeline-legend .accent { color: var(--accent); }
+      @media (max-width: 900px) {
+        .pipeline {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .stage:not(:last-child)::after {
+          display: none;
+        }
+      }
+
+      /* =========================================================
+         SLIDE — GENERIC SECTION INTRO + CONTENT BLOCKS
+         ========================================================= */
+      .section-eyebrow {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--small-size);
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: var(--accent);
+        margin-bottom: clamp(0.4rem, 1vw, 0.8rem);
+      }
+      .section-title {
+        font-weight: 900;
+        font-size: var(--title-size);
+        line-height: 1.02;
+        letter-spacing: -0.025em;
+      }
+      .section-lede {
+        font-size: clamp(0.85rem, 1.35vw, 1.1rem);
+        color: var(--ink-2);
+        margin-top: clamp(0.4rem, 1vw, 0.85rem);
+        max-width: 60ch;
+      }
+
+      /* Two-column body for stage slides */
+      .two-col {
+        display: grid;
+        grid-template-columns: 1.05fr 1fr;
+        gap: clamp(1rem, 2.4vw, 2rem);
+        align-items: start;
+        margin-top: clamp(0.7rem, 1.6vw, 1.2rem);
+      }
+      .two-col .col-left p {
+        font-size: var(--body-size);
+        color: var(--ink-2);
+        line-height: 1.55;
+      }
+      .two-col .col-left p + p {
+        margin-top: clamp(0.4rem, 1vw, 0.75rem);
+      }
+      .col-right .panel {
+        background: var(--bg-soft);
+        border-left: 3px solid var(--accent);
+        padding: clamp(0.7rem, 1.5vw, 1.2rem);
+        font-family: var(--font-mono);
+        font-size: clamp(0.7rem, 1vw, 0.9rem);
+        color: var(--ink);
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+      .col-right .panel .k { color: var(--accent); font-weight: 700; }
+      .col-right .panel .v { color: var(--ink); }
+      .col-right .panel .c { color: var(--muted); }
+
+      /* Inline tag */
+      .tag {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 0.85em;
+        background: var(--bg-soft);
+        padding: 0.05em 0.4em;
+        border-radius: 2px;
+      }
+
+      @media (max-width: 760px) {
+        .two-col,
+        .problem-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* =========================================================
+         SLIDE 7 — SCORING FORMULA (custom display)
+         ========================================================= */
+      .formula {
+        margin-top: clamp(0.8rem, 2vw, 1.4rem);
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: clamp(0.4rem, 1.2vw, 1rem) clamp(0.8rem, 2vw, 1.5rem);
+        align-items: center;
+      }
+      .formula .lhs {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(1.1rem, 2.4vw, 1.7rem);
+      }
+      .formula .rhs {
+        font-family: var(--font-mono);
+        font-size: clamp(0.85rem, 1.6vw, 1.2rem);
+        color: var(--ink);
+        line-height: 1.4;
+      }
+      .formula .rhs .pill {
+        display: inline-block;
+        padding: 0.05em 0.4em;
+        border-radius: 2px;
+        background: var(--bg-soft);
+        font-family: var(--font-mono);
+      }
+      .formula .rhs .pill.accent {
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .score-breakdown {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: clamp(0.6rem, 1.5vw, 1.2rem);
+        margin-top: clamp(0.8rem, 2vw, 1.4rem);
+      }
+      .score-cell {
+        padding: clamp(0.7rem, 1.4vw, 1rem);
+        border-top: 4px solid var(--accent);
+        background: var(--bg-paper);
+        border-right: 1px solid var(--rule-soft);
+      }
+      .score-cell:last-child {
+        border-right: none;
+      }
+      .score-cell .weight {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(1.2rem, 2.6vw, 1.8rem);
+        color: var(--accent);
+      }
+      .score-cell .name {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.85rem, 1.3vw, 1rem);
+        margin-top: 0.2rem;
+      }
+      .score-cell .desc {
+        font-size: var(--small-size);
+        color: var(--muted);
+        margin-top: 0.35rem;
+        line-height: 1.4;
+      }
+      @media (max-width: 760px) {
+        .score-breakdown {
+          grid-template-columns: 1fr;
+        }
+        .score-cell {
+          border-right: none;
+          border-bottom: 1px solid var(--rule-soft);
+        }
+      }
+
+      /* =========================================================
+         SLIDE — LLM JSON output
+         ========================================================= */
+      .json-box {
+        background: var(--ink);
+        color: var(--bg-paper);
+        padding: clamp(0.8rem, 1.6vw, 1.4rem);
+        font-family: var(--font-mono);
+        font-size: clamp(0.7rem, 1.05vw, 0.9rem);
+        line-height: 1.55;
+        border-left: 4px solid var(--accent);
+        white-space: pre;
+        overflow: hidden;
+        max-height: clamp(180px, 38vh, 360px);
+      }
+      .json-box .key { color: #ffb59c; }
+      .json-box .str { color: #d8d8c8; }
+      .json-box .accent { color: var(--accent); }
+
+      /* =========================================================
+         CLOSING — RAG triad
+         ========================================================= */
+      .rag-triad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: clamp(0.6rem, 1.6vw, 1.2rem);
+        margin-top: clamp(0.7rem, 1.6vw, 1.2rem);
+      }
+      .triad-cell {
+        border: 1px solid var(--rule);
+        padding: clamp(0.7rem, 1.4vw, 1.1rem);
+        background: var(--bg-paper);
+      }
+      .triad-cell .letter {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        color: var(--accent);
+        line-height: 1;
+      }
+      .triad-cell .name {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.9rem, 1.4vw, 1.1rem);
+        margin-top: 0.4rem;
+      }
+      .triad-cell .body {
+        font-size: var(--small-size);
+        color: var(--muted);
+        margin-top: 0.4rem;
+        line-height: 1.5;
+      }
+      .closing-note {
+        margin-top: clamp(0.8rem, 1.6vw, 1.3rem);
+        padding-top: clamp(0.6rem, 1.4vw, 1rem);
+        border-top: 1px solid var(--rule);
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.85rem, 1.4vw, 1.1rem);
+        color: var(--ink);
+      }
+      .closing-note em {
+        color: var(--accent);
+        font-style: normal;
+      }
+      @media (max-width: 760px) {
+        .rag-triad { grid-template-columns: 1fr; }
+      }
+
+      /* =========================================================
+         NAVIGATION (progress + dots) + KEYBOARD HINT
+         ========================================================= */
+      .progress-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 3px;
+        background: var(--accent);
+        width: 0%;
+        z-index: 1000;
+        transition: width 0.3s ease;
+      }
+      .nav-dots {
+        position: fixed;
+        right: clamp(0.7rem, 1.5vw, 1.5rem);
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        z-index: 1000;
+      }
+      .nav-dot {
+        width: 9px;
+        height: 9px;
+        border: 1px solid var(--ink);
+        background: transparent;
+        border-radius: 50%;
+        cursor: pointer;
+        padding: 0;
+        transition: background 0.3s ease, transform 0.3s ease;
+      }
+      .nav-dot.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: scale(1.25);
+      }
+      .keyboard-hint {
+        position: fixed;
+        bottom: clamp(0.5rem, 1.2vw, 1rem);
+        right: clamp(0.7rem, 1.5vw, 1.5rem);
+        font-family: var(--font-display);
+        font-size: var(--tiny-size);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--muted);
+        z-index: 1000;
+      }
+      .keyboard-hint kbd {
+        font-family: var(--font-mono);
+        background: var(--ink);
+        color: var(--bg-paper);
+        padding: 0.15em 0.45em;
+        border-radius: 2px;
+        margin: 0 0.15em;
+        font-size: 0.85em;
+      }
+
+      /* Tiny utility */
+      .lede-em { color: var(--accent); font-weight: 700; }
+    </style>
+  </head>
+
+  <body>
+    <!-- Top progress bar -->
+    <div class="progress-bar" aria-hidden="true"></div>
+    <!-- Side nav dots populated by JS -->
+    <nav class="nav-dots" aria-label="Slide navigation"></nav>
+    <!-- Bottom-right keyboard hint -->
+    <div class="keyboard-hint" aria-hidden="true">
+      <kbd>↓</kbd> next · <kbd>↑</kbd> prev
+    </div>
+
+    <!-- =========================================================
+         SLIDE 1 — TITLE
+         ========================================================= -->
+    <section class="slide title-slide" data-title="Title">
+      <div class="meta-top">
+        <div class="left">
+          <span class="dot"></span>
+          <span>Resume → Job RAG</span>
+        </div>
+        <div class="right">UTS · NLP · Assignment 3</div>
+      </div>
+
+      <div class="slide-content">
+        <div class="title-block">
+          <span class="accent-bar reveal r1"></span>
+          <h1 class="reveal r2">
+            Resume<span class="accent-word"> → </span>Job<br />
+            RAG Matcher
+          </h1>
+          <p class="subtitle reveal r3">Implementation Walkthrough</p>
+        </div>
+
+        <aside class="title-aside reveal r4">
+          <div class="stat">
+            <span class="stat-num"><em>1,167</em></span>
+            <span class="stat-label">Job postings indexed</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num">1,536-d</span>
+            <span class="stat-label">Dense embeddings</span>
+          </div>
+          <div class="stat">
+            <span class="stat-num">5</span>
+            <span class="stat-label">Job categories</span>
+          </div>
+        </aside>
+      </div>
+
+      <span class="title-marker">01</span>
+
+      <div class="meta-bottom">
+        <span>Daniel Gao</span>
+        <span>01 / 09</span>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 2 — THE PROBLEM
+         ========================================================= -->
+    <section class="slide" data-title="Problem">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Problem</span></div>
+        <div class="right">Why semantic retrieval matters</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 01 · Problem</span>
+        <h2 class="section-title reveal r2">
+          Keyword search<br />misses good matches.
+        </h2>
+        <p class="section-lede reveal r3">
+          The same skill is written many ways. A literal match treats them as
+          different; a semantic match recognises they're the same idea.
+        </p>
+
+        <div class="problem-grid">
+          <div class="problem-card bad reveal r4">
+            <span class="label">Resume</span>
+            <p class="quote">
+              "<span class="term">dashboard reporting</span>"
+            </p>
+            <span class="verdict">— what the candidate writes</span>
+          </div>
+          <div class="problem-card good reveal r5">
+            <span class="label">Job Description</span>
+            <p class="quote">
+              "<span class="term">data visualisation</span>"
+            </p>
+            <span class="verdict">— what the role asks for</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom">
+        <span>The same skill, written two ways</span><span>02 / 09</span>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 3 — PIPELINE (HERO DIAGRAM)
+         End-to-end flow: load → embed → store → retrieve → score → llm → ui
+         ========================================================= -->
+    <section class="slide" data-title="Pipeline">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Pipeline</span></div>
+        <div class="right">End-to-end implementation flow</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 02 · Architecture</span>
+        <h2 class="section-title reveal r2">The pipeline, end&#8209;to&#8209;end.</h2>
+        <p class="section-lede reveal r3">
+          Seven deterministic stages — only the last is a generative LLM, and it
+          is grounded by everything that came before.
+        </p>
+
+        <div class="pipeline-wrap reveal r4">
+          <div class="pipeline">
+            <div class="stage">
+              <span class="stage-num">01</span>
+              <span class="stage-name">Load Data</span>
+              <span class="stage-meta">HuggingFace<br/>1,167 jobs</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">02</span>
+              <span class="stage-name">Embed</span>
+              <span class="stage-meta">text-embedding-<br/>3-small · 1536-d</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">03</span>
+              <span class="stage-name">Index</span>
+              <span class="stage-meta">Pinecone<br/>cosine metric</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">04</span>
+              <span class="stage-name">Retrieve</span>
+              <span class="stage-meta">resume → vector<br/>top-k = 10</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">05</span>
+              <span class="stage-name">Score</span>
+              <span class="stage-meta">0.5 sem · 0.3 skill<br/>0.2 category</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">06</span>
+              <span class="stage-name">Explain</span>
+              <span class="stage-meta">gpt-4o-mini<br/>JSON output</span>
+            </div>
+            <div class="stage">
+              <span class="stage-num">07</span>
+              <span class="stage-name">Render</span>
+              <span class="stage-meta">FastAPI +<br/>HTML frontend</span>
+            </div>
+          </div>
+          <div class="pipeline-legend">
+            <span><span class="accent">●</span>&nbsp;&nbsp;Offline indexing &nbsp;·&nbsp; once per dataset</span>
+            <span>Online query &nbsp;·&nbsp; per resume&nbsp;&nbsp;<span class="accent">●</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Stages 01-03 are offline · 04-07 run per query</span><span>03 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 4 — DATA
+         ========================================================= -->
+    <section class="slide" data-title="Data">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Stage 01 · Data</span></div>
+        <div class="right">batuhanmtl / job-skill-set</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 03 · Stage 01 · Load</span>
+        <h2 class="section-title reveal r2">From raw rows to <br/><span style="color:var(--accent)">JobPosting</span> objects.</h2>
+
+        <div class="two-col">
+          <div class="col-left reveal r3">
+            <p>
+              We load <span class="tag">batuhanmtl/job-skill-set</span> from
+              HuggingFace — <strong>1,167 postings</strong> across five
+              categories: HR, IT, Business&nbsp;Development, Finance and Sales.
+            </p>
+            <p>
+              Each row is cleaned into a typed <span class="tag">JobPosting</span>
+              dataclass and the full collection is dumped to
+              <span class="tag">data/job_postings.json</span> — the single
+              source of truth for the offline indexing job.
+            </p>
+            <p style="color:var(--muted);font-size:var(--small-size);">
+              Implemented in <span class="tag">data/load_dataset.py</span>.
+              The JSON file is git-ignored.
+            </p>
+          </div>
+          <div class="col-right reveal r4">
+            <pre class="panel"><span class="c"># JobPosting schema</span>
+<span class="k">job_id</span>          <span class="v">str</span>
+<span class="k">category</span>        <span class="v">str</span>      <span class="c"># 1 of 5</span>
+<span class="k">job_title</span>       <span class="v">str</span>
+<span class="k">job_description</span> <span class="v">str</span>
+<span class="k">job_skill_set</span>   <span class="v">list[str]</span></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Cleaned, typed, persisted to disk</span><span>04 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 5 — EMBEDDING + PINECONE
+         ========================================================= -->
+    <section class="slide" data-title="Embedding">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Stages 02-03 · Embed + Index</span></div>
+        <div class="right">OpenAI · Pinecone</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 04 · Stages 02-03</span>
+        <h2 class="section-title reveal r2">One vector per job.<br/>Stored in Pinecone.</h2>
+
+        <div class="two-col">
+          <div class="col-left reveal r3">
+            <p>
+              Per job we concatenate
+              <span class="tag">job_title</span> +
+              <span class="tag">job_description</span> +
+              <span class="tag">job_skill_set</span> into one embedding
+              text — title gives the role signal, description gives semantics,
+              skills give the explicit requirements.
+            </p>
+            <p>
+              We embed with <strong>text-embedding-3-small</strong> →
+              <strong>1,536-dim</strong> dense vectors and upsert each into
+              Pinecone alongside its metadata. <span class="tag">job_id</span>
+              and <span class="tag">category</span> stay as metadata only —
+              they aren't part of the embedded text.
+            </p>
+          </div>
+          <div class="col-right reveal r4">
+            <pre class="panel"><span class="c"># Pinecone index</span>
+<span class="k">index    </span> <span class="v">job-skill-rag</span>
+<span class="k">namespace</span> <span class="v">job-skill-set</span>
+<span class="k">type     </span> <span class="v">dense</span>
+<span class="k">dimension</span> <span class="v">1536</span>
+<span class="k">metric   </span> <span class="v">cosine</span>
+<span class="k">records  </span> <span class="v">1167</span></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>indexing/upsert_pinecone.py</span><span>05 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 6 — RETRIEVAL
+         ========================================================= -->
+    <section class="slide" data-title="Retrieval">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Stage 04 · Retrieve</span></div>
+        <div class="right">The "R" in RAG</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 05 · Stage 04</span>
+        <h2 class="section-title reveal r2">Resume in.<br/>Top-K jobs out.</h2>
+
+        <div class="two-col">
+          <div class="col-left reveal r3">
+            <p>
+              The resume — pasted text or text extracted from an uploaded
+              PDF — is embedded with the <em>same</em> model used for jobs,
+              so the two vectors live in the same space.
+            </p>
+            <p>
+              Pinecone returns the top&nbsp;k matches by cosine similarity.
+              We map each raw match into a clean
+              <span class="tag">RetrievedJob</span> object so the rest of the
+              app never sees Pinecone-shaped JSON.
+            </p>
+            <p style="color:var(--muted);font-size:var(--small-size);">
+              Optional <span class="tag">category</span> filter is forwarded
+              as a Pinecone metadata filter — narrows the search server-side.
+            </p>
+          </div>
+          <div class="col-right reveal r4">
+            <pre class="panel"><span class="c"># Per-resume query</span>
+index.<span class="k">query</span>(
+  vector=resume_vector,
+  top_k=<span class="v">10</span>,
+  include_metadata=<span class="v">True</span>,
+  namespace=<span class="v">"job-skill-set"</span>,
+  filter=category_filter,
+)</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Same model both sides → same vector space</span><span>06 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 7 — MATCH SCORING
+         ========================================================= -->
+    <section class="slide" data-title="Scoring">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Stage 05 · Score</span></div>
+        <div class="right">Deterministic · auditable</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 06 · Stage 05</span>
+        <h2 class="section-title reveal r2">A score the user can read.</h2>
+
+        <div class="formula reveal r3">
+          <div class="lhs">match_score =</div>
+          <div class="rhs">
+            <span class="pill accent">0.5</span> · semantic_pct&nbsp;
+            <span style="color:var(--muted)">+</span>&nbsp;
+            <span class="pill accent">0.3</span> · skill_overlap_pct&nbsp;
+            <span style="color:var(--muted)">+</span>&nbsp;
+            <span class="pill accent">0.2</span> · category_bonus
+          </div>
+        </div>
+
+        <div class="score-breakdown">
+          <div class="score-cell reveal r4">
+            <div class="weight">50%</div>
+            <div class="name">Semantic</div>
+            <div class="desc">
+              Cosine rescaled so 0.25 → 0% and 0.85 → 100% — embeddings
+              rarely reach 1.0.
+            </div>
+          </div>
+          <div class="score-cell reveal r5">
+            <div class="weight">30%</div>
+            <div class="name">Skill overlap</div>
+            <div class="desc">
+              Normalised string match between resume skills and JD skills.
+              Drives the missing-skills list.
+            </div>
+          </div>
+          <div class="score-cell reveal r6">
+            <div class="weight">20%</div>
+            <div class="name">Category bonus</div>
+            <div class="desc">
+              100 if predicted resume category matches JD category, else 0 —
+              ties this feature back to the classifier.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Computed in Python · no LLM in the loop here</span><span>07 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 8 — LLM SKILL-GAP
+         ========================================================= -->
+    <section class="slide" data-title="LLM">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Stage 06 · Explain</span></div>
+        <div class="right">gpt-4o-mini · grounded JSON</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 07 · Stage 06</span>
+        <h2 class="section-title reveal r2">The LLM explains.<br/>It doesn't score.</h2>
+
+        <div class="two-col">
+          <div class="col-left reveal r3">
+            <p>
+              <strong>gpt-4o-mini</strong> receives the resume, retrieved jobs,
+              backend match scores, matched / missing skills and JD excerpts.
+              The system prompt forbids fabricated numbers — scores are
+              already final.
+            </p>
+            <p>
+              Output is strict JSON: <span class="tag">ranked_matches</span>,
+              <span class="tag">skill_gaps</span>, <span class="tag">notes</span>.
+              On malformed output a deterministic fallback fires so the API
+              never returns an unusable response.
+            </p>
+          </div>
+          <div class="col-right reveal r4">
+<pre class="json-box"><span class="key">"ranked_matches"</span>: [
+  {
+    <span class="key">"job_id"</span>: <span class="str">"3902861423"</span>,
+    <span class="key">"job_title"</span>: <span class="str">"IT Programmer"</span>,
+    <span class="key">"why_match"</span>: <span class="str">"SQL + comms..."</span>,
+    <span class="key">"missing_skills"</span>: [<span class="str">"Power BI"</span>]
+  }
+],
+<span class="key">"skill_gaps"</span>: [
+  {
+    <span class="key">"skill"</span>: <span class="str">"Power BI"</span>,
+    <span class="key">"suggestion"</span>: <span class="str">"Add training..."</span>
+  }
+]</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Retrieval grounds generation · no hallucinated scores</span><span>08 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE 9 — WHY THIS IS RAG (closing)
+         ========================================================= -->
+    <section class="slide" data-title="Recap">
+      <div class="meta-top">
+        <div class="left"><span class="dot"></span><span>Recap</span></div>
+        <div class="right">Why this is RAG</div>
+      </div>
+
+      <div class="slide-content">
+        <span class="section-eyebrow reveal r1">§ 08 · Recap</span>
+        <h2 class="section-title reveal r2">Retrieval &middot; Augmentation &middot; Generation.</h2>
+
+        <div class="rag-triad">
+          <div class="triad-cell reveal r3">
+            <div class="letter">R</div>
+            <div class="name">Retrieval</div>
+            <div class="body">
+              Pinecone returns the most semantically similar job postings to
+              the resume vector.
+            </div>
+          </div>
+          <div class="triad-cell reveal r4">
+            <div class="letter">A</div>
+            <div class="name">Augmentation</div>
+            <div class="body">
+              Retrieved jobs and our deterministic match scores are inserted
+              into the LLM prompt as evidence.
+            </div>
+          </div>
+          <div class="triad-cell reveal r5">
+            <div class="letter">G</div>
+            <div class="name">Generation</div>
+            <div class="body">
+              gpt-4o-mini generates skill-gap explanations
+              <em>grounded</em> in retrieved jobs — never from memory.
+            </div>
+          </div>
+        </div>
+
+        <div class="closing-note reveal r6">
+          Next: a <em>real category predictor</em> &amp; LLM-based skill
+          extraction so &ldquo;dashboard reporting&rdquo; finally matches
+          &ldquo;data visualisation.&rdquo;
+        </div>
+      </div>
+
+      <div class="meta-bottom"><span>Daniel Gao · UTS NLP A3</span><span>09 / 09</span></div>
+    </section>
+
+    <!-- =========================================================
+         SLIDE PRESENTATION CONTROLLER
+         - keyboard nav (arrows, space, page up/down, home/end)
+         - touch + wheel
+         - progress bar + nav dots
+         - intersection observer toggles .visible to trigger reveals
+         ========================================================= -->
+    <script>
+      class SlidePresentation {
+        constructor() {
+          this.slides = Array.from(document.querySelectorAll(".slide"));
+          this.progressBar = document.querySelector(".progress-bar");
+          this.navDotsContainer = document.querySelector(".nav-dots");
+          this.currentIndex = 0;
+          this.scrolling = false;
+
+          this.setupNavDots();
+          this.setupIntersectionObserver();
+          this.setupKeyboardNav();
+          this.setupWheelNav();
+          this.setupTouchNav();
+          this.updateProgressBar();
+        }
+
+        // -------- Side dots (one per slide) --------
+        setupNavDots() {
+          // CRITICAL: clear before populating — prevents duplicate dots when
+          // the saved file is reopened with the previous DOM still present.
+          this.navDotsContainer.innerHTML = "";
+          this.slides.forEach((slide, i) => {
+            const dot = document.createElement("button");
+            dot.className = "nav-dot" + (i === 0 ? " active" : "");
+            dot.setAttribute(
+              "aria-label",
+              `Go to slide ${i + 1}: ${slide.dataset.title || ""}`
+            );
+            dot.addEventListener("click", () => this.goTo(i));
+            this.navDotsContainer.appendChild(dot);
+          });
+          this.navDots = Array.from(this.navDotsContainer.children);
+        }
+
+        // -------- Reveal-on-enter using IntersectionObserver --------
+        setupIntersectionObserver() {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+                  entry.target.classList.add("visible");
+                  const idx = this.slides.indexOf(entry.target);
+                  if (idx !== -1) {
+                    this.currentIndex = idx;
+                    this.updateChrome();
+                  }
+                }
+              });
+            },
+            { threshold: [0.5] }
+          );
+          this.slides.forEach((s) => observer.observe(s));
+        }
+
+        // -------- Keyboard navigation --------
+        setupKeyboardNav() {
+          document.addEventListener("keydown", (e) => {
+            const k = e.key;
+            if (
+              k === "ArrowDown" ||
+              k === "ArrowRight" ||
+              k === "PageDown" ||
+              k === " "
+            ) {
+              e.preventDefault();
+              this.goTo(this.currentIndex + 1);
+            } else if (
+              k === "ArrowUp" ||
+              k === "ArrowLeft" ||
+              k === "PageUp"
+            ) {
+              e.preventDefault();
+              this.goTo(this.currentIndex - 1);
+            } else if (k === "Home") {
+              e.preventDefault();
+              this.goTo(0);
+            } else if (k === "End") {
+              e.preventDefault();
+              this.goTo(this.slides.length - 1);
+            }
+          });
+        }
+
+        // -------- Wheel-snap (debounced so trackpads don't fly through) --------
+        setupWheelNav() {
+          let lastWheel = 0;
+          window.addEventListener(
+            "wheel",
+            (e) => {
+              const now = Date.now();
+              if (now - lastWheel < 700) return;
+              if (Math.abs(e.deltaY) < 30) return;
+              lastWheel = now;
+              this.goTo(this.currentIndex + (e.deltaY > 0 ? 1 : -1));
+            },
+            { passive: true }
+          );
+        }
+
+        // -------- Touch swipe --------
+        setupTouchNav() {
+          let startY = null;
+          window.addEventListener(
+            "touchstart",
+            (e) => {
+              startY = e.touches[0].clientY;
+            },
+            { passive: true }
+          );
+          window.addEventListener(
+            "touchend",
+            (e) => {
+              if (startY === null) return;
+              const delta = startY - e.changedTouches[0].clientY;
+              if (Math.abs(delta) < 50) return;
+              this.goTo(this.currentIndex + (delta > 0 ? 1 : -1));
+              startY = null;
+            },
+            { passive: true }
+          );
+        }
+
+        goTo(index) {
+          const clamped = Math.max(0, Math.min(index, this.slides.length - 1));
+          this.slides[clamped].scrollIntoView({ behavior: "smooth" });
+        }
+
+        updateProgressBar() {
+          const update = () => {
+            const total = document.documentElement.scrollHeight - window.innerHeight;
+            const progress = total > 0 ? (window.scrollY / total) * 100 : 0;
+            this.progressBar.style.width = `${progress}%`;
+          };
+          window.addEventListener("scroll", update, { passive: true });
+          update();
+        }
+
+        updateChrome() {
+          this.navDots.forEach((dot, i) =>
+            dot.classList.toggle("active", i === this.currentIndex)
+          );
+        }
+      }
+
+      // Force first slide visible immediately so its reveals trigger on load
+      document.querySelector(".slide").classList.add("visible");
+      new SlidePresentation();
+    </script>
+  </body>
+</html>
