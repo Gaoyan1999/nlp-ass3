@@ -7,12 +7,12 @@ import ast
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
 from datasets import load_dataset
 
 
 DATASET_NAME = "batuhanmtl/job-skill-set"
+DEFAULT_OUTPUT_PATH = Path("data/job_postings.json")
 
 
 @dataclass(frozen=True)
@@ -71,28 +71,22 @@ def load_job_postings(limit: int | None = None) -> list[JobPosting]:
     return postings
 
 
-def write_jsonl(postings: Iterable[JobPosting], path: Path) -> None:
-    """Write cleaned jobs to JSONL for inspection or report evidence."""
+def write_json(postings: list[JobPosting], path: Path) -> None:
+    """Write cleaned jobs to one JSON file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        for posting in postings:
-            handle.write(json.dumps(asdict(posting), ensure_ascii=False) + "\n")
+        json.dump([asdict(posting) for posting in postings], handle, ensure_ascii=False, indent=2)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Load and preview job postings.")
-    parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--jsonl", type=Path, default=None)
+    parser = argparse.ArgumentParser(description="Load all job postings and save them as JSON.")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     args = parser.parse_args()
 
-    postings = load_job_postings(limit=args.limit)
+    postings = load_job_postings()
+    write_json(postings, args.output)
     print(f"Loaded {len(postings)} postings from {DATASET_NAME}")
-    if postings:
-        first = postings[0]
-        print(json.dumps(asdict(first), indent=2)[:2000])
-    if args.jsonl:
-        write_jsonl(postings, args.jsonl)
-        print(f"Wrote cleaned postings to {args.jsonl}")
+    print(f"Wrote cleaned postings to {args.output}")
 
 
 if __name__ == "__main__":
