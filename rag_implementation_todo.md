@@ -42,6 +42,7 @@ Why this matters: retrieval is the "R" in RAG. It chooses the evidence that the 
 - [x] Implement the weighted formula from the plan.
 - [x] Extract resume skill mentions and compare them with JD skills.
 - [x] Return score breakdowns for the UI and report.
+- [ ] Improve skill matching with LLM skill extraction so semantically equivalent phrases can match, not only exact normalised strings.
 
 Why this matters: the LLM should explain matches, not invent scores. Scores are computed in Python so they are reproducible.
 
@@ -59,6 +60,7 @@ Why this matters: generation is where RAG becomes useful to a job seeker. The mo
 - [x] Create `rag/category.py`.
 - [x] Support an optional existing sklearn/joblib classifier via `RESUME_CLASSIFIER_PATH`.
 - [x] Allow manual `predicted_category` in the API request for demos when the classifier file is not present.
+- [ ] Add a real category predictor in this repo
 
 Why this matters: the original category classifier becomes a reranking signal. If the classifier is unavailable in this repo, the RAG feature still runs and clearly reports that no category bonus was applied.
 

@@ -56,6 +56,8 @@ class PineconeJobRetriever:
             namespace=self.namespace,
             filter=metadata_filter,
         )
+        print("Raw Pinecone response:")
+        print(response)
 
         jobs: list[RetrievedJob] = []
         for match in _value(response, "matches", []):
