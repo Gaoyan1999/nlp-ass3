@@ -16,7 +16,7 @@ import joblib
 from dotenv import load_dotenv
 
 
-VALID_CATEGORIES = {"HR", "IT", "Business-Dev", "Finance", "Sales"}
+VALID_CATEGORIES = {"HR", "INFORMATION-TECHNOLOGY", "BUSINESS-DEVELOPMENT", "FINANCE", "SALES"}
 
 
 class CategoryPredictor:

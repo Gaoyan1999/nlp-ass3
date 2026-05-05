@@ -113,6 +113,20 @@
         font-size: 14px;
       }
 
+      .upload-row {
+        margin-top: 14px;
+      }
+
+      input[type="file"] {
+        width: 100%;
+        border: 1px dashed var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        background: #fff;
+        color: var(--muted);
+        font: inherit;
+      }
+
       button {
         width: 100%;
         min-height: 42px;
@@ -374,31 +388,36 @@
       <section>
         <form id="match-form">
           <label for="resume">Resume</label>
-          <textarea id="resume" name="resume" required>
+          <textarea id="resume" name="resume">
 Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeholder communication, machine learning experiments, and cloud data workflows. Built ETL scripts, cleaned large datasets, created BI dashboards, and presented findings to business teams.</textarea
           >
+
+          <div class="upload-row">
+            <label for="resume-pdf">Upload PDF resume</label>
+            <input id="resume-pdf" type="file" accept="application/pdf,.pdf" />
+          </div>
 
           <div class="controls">
             <div>
               <label for="category-filter">Category filter</label>
               <select id="category-filter">
                 <option value="">Any</option>
-                <option>HR</option>
-                <option>IT</option>
-                <option>Business-Dev</option>
-                <option>Finance</option>
-                <option>Sales</option>
+                <option value="HR">HR</option>
+                <option value="INFORMATION-TECHNOLOGY">Information Technology</option>
+                <option value="BUSINESS-DEVELOPMENT">Business Development</option>
+                <option value="FINANCE">Finance</option>
+                <option value="SALES">Sales</option>
               </select>
             </div>
             <div>
               <label for="predicted-category">Resume category</label>
               <select id="predicted-category">
                 <option value="">Auto / none</option>
-                <option>HR</option>
-                <option>IT</option>
-                <option>Business-Dev</option>
-                <option>Finance</option>
-                <option>Sales</option>
+                <option value="HR">HR</option>
+                <option value="INFORMATION-TECHNOLOGY">Information Technology</option>
+                <option value="BUSINESS-DEVELOPMENT">Business Development</option>
+                <option value="FINANCE">Finance</option>
+                <option value="SALES">Sales</option>
               </select>
             </div>
             <div>
@@ -448,6 +467,8 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
       const results = document.querySelector("#results");
       const statusEl = document.querySelector("#status");
       const errorEl = document.querySelector("#error");
+      const resumeInput = document.querySelector("#resume");
+      const pdfInput = document.querySelector("#resume-pdf");
       const modal = document.querySelector("#jd-modal");
       const modalTitle = document.querySelector("#jd-modal-title");
       const modalMeta = document.querySelector("#jd-modal-meta");
@@ -460,12 +481,14 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
         errorEl.innerHTML = "";
         button.disabled = true;
         button.textContent = "Running...";
-        statusEl.textContent = "Embedding resume and querying Pinecone";
+        statusEl.textContent = pdfInput.files[0]
+          ? "Extracting PDF, embedding resume, and querying Pinecone"
+          : "Embedding resume and querying Pinecone";
         results.className = "empty";
         results.textContent = "Retrieving matches...";
 
         const payload = {
-          resume_text: document.querySelector("#resume").value.trim(),
+          resume_text: resumeInput.value.trim(),
           top_k: Number(document.querySelector("#top-k").value),
           category_filter: document.querySelector("#category-filter").value || null,
           predicted_category: document.querySelector("#predicted-category").value || null,
@@ -473,16 +496,32 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
         };
 
         try {
-          const response = await fetch("/match", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+          const selectedPdf = pdfInput.files[0];
+          const response = selectedPdf
+            ? await fetch("/match-pdf", {
+                method: "POST",
+                body: buildPdfFormData(selectedPdf, payload),
+              })
+            : await fetch("/match", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
           const data = await response.json();
           if (!response.ok) {
             throw new Error(data.detail || "Request failed");
           }
-          saveSearchResult(payload, data);
+          if (data.resume_markdown) {
+            resumeInput.value = data.resume_markdown;
+          }
+          saveSearchResult(
+            {
+              ...payload,
+              resume_text: data.resume_markdown || payload.resume_text,
+              pdf_filename: selectedPdf?.name || null,
+            },
+            data
+          );
           render(data);
         } catch (error) {
           results.className = "empty";
@@ -494,6 +533,16 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           button.textContent = "Run matcher";
         }
       });
+
+      function buildPdfFormData(file, payload) {
+        const formData = new FormData();
+        formData.append("resume_pdf", file);
+        formData.append("top_k", String(payload.top_k));
+        formData.append("category_filter", payload.category_filter || "");
+        formData.append("predicted_category", payload.predicted_category || "");
+        formData.append("use_llm", String(payload.use_llm));
+        return formData;
+      }
 
       function render(data) {
         currentMatches = data.matches || [];
@@ -626,7 +675,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
             return;
           }
 
-          document.querySelector("#resume").value = saved.payload.resume_text || "";
+          resumeInput.value = saved.payload.resume_text || "";
           document.querySelector("#top-k").value = saved.payload.top_k || 10;
           document.querySelector("#category-filter").value = saved.payload.category_filter || "";
           document.querySelector("#predicted-category").value = saved.payload.predicted_category || "";
