@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Job RAG Matcher</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f2933;
+        --muted: #5f6f7c;
+        --line: #d7dde3;
+        --panel: #ffffff;
+        --page: #f4f6f8;
+        --accent: #0f766e;
+        --accent-dark: #0b5f59;
+        --warn: #9a3412;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header,
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        padding: 28px 0 18px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 30px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .subhead {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) 1fr;
+        gap: 18px;
+        padding-bottom: 40px;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      label {
+        display: block;
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      textarea,
+      select,
+      input[type="number"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        font: inherit;
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 360px;
+        resize: vertical;
+        padding: 12px;
+        line-height: 1.45;
+      }
+
+      select,
+      input[type="number"] {
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      button {
+        width: 100%;
+        min-height: 42px;
+        margin-top: 16px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-dark);
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.7;
+      }
+
+      .result-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+        margin-bottom: 14px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: right;
+      }
+
+      .match {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        margin: 12px 0;
+      }
+
+      .match-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .title {
+        font-size: 17px;
+        font-weight: 800;
+      }
+
+      .category {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 3px;
+      }
+
+      .score {
+        min-width: 92px;
+        text-align: right;
+        color: var(--accent-dark);
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .breakdown {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin: 12px 0;
+      }
+
+      .metric {
+        background: #f8fafb;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        font-size: 13px;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 2px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 12px;
+        background: #fff;
+      }
+
+      .gap-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .gap {
+        border-left: 3px solid var(--warn);
+        padding: 8px 10px;
+        background: #fff7ed;
+      }
+
+      .gap strong {
+        display: block;
+      }
+
+      .empty {
+        color: var(--muted);
+        padding: 28px 0;
+        text-align: center;
+      }
+
+      .error {
+        color: #991b1b;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 12px;
+      }
+
+      @media (max-width: 860px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        .breakdown {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Resume Job RAG Matcher</h1>
+      <p class="subhead">Semantic job retrieval with deterministic match scoring and grounded skill-gap output.</p>
+    </header>
+
+    <main>
+      <section>
+        <form id="match-form">
+          <label for="resume">Resume</label>
+          <textarea id="resume" name="resume" required>
+Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeholder communication, machine learning experiments, and cloud data workflows. Built ETL scripts, cleaned large datasets, created BI dashboards, and presented findings to business teams.</textarea
+          >
+
+          <div class="controls">
+            <div>
+              <label for="category-filter">Category filter</label>
+              <select id="category-filter">
+                <option value="">Any</option>
+                <option>HR</option>
+                <option>IT</option>
+                <option>Business-Dev</option>
+                <option>Finance</option>
+                <option>Sales</option>
+              </select>
+            </div>
+            <div>
+              <label for="predicted-category">Resume category</label>
+              <select id="predicted-category">
+                <option value="">Auto / none</option>
+                <option>HR</option>
+                <option>IT</option>
+                <option>Business-Dev</option>
+                <option>Finance</option>
+                <option>Sales</option>
+              </select>
+            </div>
+            <div>
+              <label for="top-k">Top K</label>
+              <input id="top-k" type="number" min="1" max="20" value="10" />
+            </div>
+          </div>
+
+          <label class="toggle">
+            <input id="use-llm" type="checkbox" checked />
+            Generate LLM explanation
+          </label>
+
+          <button id="submit-button" type="submit">Run matcher</button>
+          <div id="error"></div>
+        </form>
+      </section>
+
+      <section>
+        <div class="result-header">
+          <h2>Matches</h2>
+          <div id="status" class="status">Waiting for input</div>
+        </div>
+        <div id="results" class="empty">Results will appear here after retrieval.</div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.querySelector("#match-form");
+      const button = document.querySelector("#submit-button");
+      const results = document.querySelector("#results");
+      const statusEl = document.querySelector("#status");
+      const errorEl = document.querySelector("#error");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        errorEl.innerHTML = "";
+        button.disabled = true;
+        button.textContent = "Running...";
+        statusEl.textContent = "Embedding resume and querying Pinecone";
+        results.className = "empty";
+        results.textContent = "Retrieving matches...";
+
+        const payload = {
+          resume_text: document.querySelector("#resume").value.trim(),
+          top_k: Number(document.querySelector("#top-k").value),
+          category_filter: document.querySelector("#category-filter").value || null,
+          predicted_category: document.querySelector("#predicted-category").value || null,
+          use_llm: document.querySelector("#use-llm").checked,
+        };
+
+        try {
+          const response = await fetch("/match", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.detail || "Request failed");
+          }
+          render(data);
+        } catch (error) {
+          results.className = "empty";
+          results.textContent = "No results rendered.";
+          errorEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+          statusEl.textContent = "Error";
+        } finally {
+          button.disabled = false;
+          button.textContent = "Run matcher";
+        }
+      });
+
+      function render(data) {
+        const source = data.category_source === "unavailable" ? "no classifier" : data.category_source;
+        statusEl.textContent = `Category: ${data.predicted_category || "none"} (${source})`;
+        const gaps = data.generation.skill_gaps || [];
+        const matches = data.matches || [];
+        const explanationById = new Map(
+          (data.generation.ranked_matches || []).map((item) => [String(item.job_id), item])
+        );
+
+        results.className = "";
+        results.innerHTML = `
+          ${data.generation.notes ? `<div class="error">${escapeHtml(data.generation.notes)}</div>` : ""}
+          <div class="gap-list">
+            ${gaps
+              .slice(0, 8)
+              .map(
+                (gap) => `
+                  <div class="gap">
+                    <strong>${escapeHtml(gap.skill)}</strong>
+                    <span>${escapeHtml(gap.suggestion || "")}</span>
+                  </div>
+                `
+              )
+              .join("")}
+          </div>
+          ${matches.map((item) => renderMatch(item, explanationById.get(String(item.job.job_id)))).join("")}
+        `;
+      }
+
+      function renderMatch(item, explanation) {
+        const score = item.score;
+        const job = item.job;
+        const matched = score.matched_skills.slice(0, 10);
+        const missing = (explanation?.missing_skills || score.missing_skills).slice(0, 10);
+        return `
+          <article class="match">
+            <div class="match-top">
+              <div>
+                <div class="title">${escapeHtml(job.job_title)}</div>
+                <div class="category">${escapeHtml(job.category)} · Job ID ${escapeHtml(job.job_id)}</div>
+              </div>
+              <div class="score">${score.match_score}%</div>
+            </div>
+            <div class="breakdown">
+              <div class="metric">Semantic<strong>${score.semantic_pct}%</strong></div>
+              <div class="metric">Skills<strong>${score.matched_skill_count}/${score.total_skill_count} (${score.skill_overlap_pct}%)</strong></div>
+              <div class="metric">Category<strong>${score.category_bonus > 0 ? "match" : "no bonus"}</strong></div>
+            </div>
+            <p>${escapeHtml(explanation?.why_match || "No generated explanation for this job.")}</p>
+            ${matched.length ? `<div class="chips">${matched.map((skill) => `<span class="chip">${escapeHtml(skill)}</span>`).join("")}</div>` : ""}
+            ${missing.length ? `<div class="chips">${missing.map((skill) => `<span class="chip">${escapeHtml(skill)}</span>`).join("")}</div>` : ""}
+          </article>
+        `;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+    </script>
+  </body>
+</html>
