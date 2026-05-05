@@ -186,6 +186,36 @@
         font-weight: 900;
       }
 
+      .score-actions {
+        display: grid;
+        justify-items: end;
+        gap: 8px;
+      }
+
+      .preview-button {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        min-height: 34px;
+        margin-top: 0;
+        padding: 0;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+      }
+
+      .preview-button:hover {
+        border-color: var(--accent);
+        background: #eef8f6;
+        color: var(--accent-dark);
+      }
+
+      .preview-button svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+      }
+
       .breakdown {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -249,6 +279,78 @@
         border-radius: 6px;
         padding: 10px;
         margin-top: 12px;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: rgb(15 23 42 / 0.48);
+      }
+
+      .modal-backdrop[hidden] {
+        display: none;
+      }
+
+      .modal {
+        width: min(760px, 100%);
+        max-height: min(720px, calc(100vh - 40px));
+        overflow: hidden;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 24px 70px rgb(15 23 42 / 0.28);
+      }
+
+      .modal-header {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .modal-title {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      .modal-meta {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .modal-close {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        min-height: 34px;
+        margin-top: 0;
+        padding: 0;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .modal-close:hover {
+        border-color: var(--accent);
+        background: #eef8f6;
+        color: var(--accent-dark);
+      }
+
+      .modal-body {
+        max-height: calc(min(720px, 100vh - 40px) - 82px);
+        overflow: auto;
+        padding: 18px;
+        white-space: pre-wrap;
+        line-height: 1.55;
       }
 
       @media (max-width: 860px) {
@@ -324,12 +426,34 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
       </section>
     </main>
 
+    <div class="modal-backdrop" id="jd-modal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="jd-modal-title">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="jd-modal-title">Job Description</h2>
+            <div class="modal-meta" id="jd-modal-meta"></div>
+          </div>
+          <button class="modal-close" id="jd-modal-close" type="button" aria-label="Close job description preview">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body" id="jd-modal-body"></div>
+      </div>
+    </div>
+
     <script>
+      const STORAGE_KEY = "resume-job-rag:last-search";
       const form = document.querySelector("#match-form");
       const button = document.querySelector("#submit-button");
       const results = document.querySelector("#results");
       const statusEl = document.querySelector("#status");
       const errorEl = document.querySelector("#error");
+      const modal = document.querySelector("#jd-modal");
+      const modalTitle = document.querySelector("#jd-modal-title");
+      const modalMeta = document.querySelector("#jd-modal-meta");
+      const modalBody = document.querySelector("#jd-modal-body");
+      const modalClose = document.querySelector("#jd-modal-close");
+      let currentMatches = [];
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -358,6 +482,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           if (!response.ok) {
             throw new Error(data.detail || "Request failed");
           }
+          saveSearchResult(payload, data);
           render(data);
         } catch (error) {
           results.className = "empty";
@@ -371,10 +496,11 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
       });
 
       function render(data) {
+        currentMatches = data.matches || [];
         const source = data.category_source === "unavailable" ? "no classifier" : data.category_source;
         statusEl.textContent = `Category: ${data.predicted_category || "none"} (${source})`;
         const gaps = data.generation.skill_gaps || [];
-        const matches = data.matches || [];
+        const matches = currentMatches;
         const explanationById = new Map(
           (data.generation.ranked_matches || []).map((item) => [String(item.job_id), item])
         );
@@ -395,11 +521,25 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
               )
               .join("")}
           </div>
-          ${matches.map((item) => renderMatch(item, explanationById.get(String(item.job.job_id)))).join("")}
+          ${matches.map((item, index) => renderMatch(item, explanationById.get(String(item.job.job_id)), index)).join("")}
         `;
       }
 
-      function renderMatch(item, explanation) {
+      results.addEventListener("click", (event) => {
+        const previewButton = event.target.closest("[data-preview-index]");
+        if (!previewButton) {
+          return;
+        }
+
+        const item = currentMatches[Number(previewButton.dataset.previewIndex)];
+        if (!item) {
+          return;
+        }
+
+        openJobModal(item.job);
+      });
+
+      function renderMatch(item, explanation, index) {
         const score = item.score;
         const job = item.job;
         const matched = score.matched_skills.slice(0, 10);
@@ -411,7 +551,16 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
                 <div class="title">${escapeHtml(job.job_title)}</div>
                 <div class="category">${escapeHtml(job.category)} · Job ID ${escapeHtml(job.job_id)}</div>
               </div>
-              <div class="score">${score.match_score}%</div>
+              <div class="score-actions">
+                <div class="score">${score.match_score}%</div>
+                <button
+                  class="preview-button"
+                  type="button"
+                  data-preview-index="${index}"
+                  aria-label="Preview job description for ${escapeHtml(job.job_title)}"
+                  title="Preview JD"
+                >${previewIcon()}</button>
+              </div>
             </div>
             <div class="breakdown">
               <div class="metric">Semantic<strong>${score.semantic_pct}%</strong></div>
@@ -425,6 +574,108 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
         `;
       }
 
+      function previewIcon() {
+        return `
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        `;
+      }
+
+      function openJobModal(job) {
+        modalTitle.textContent = job.job_title || "Job Description";
+        modalMeta.textContent = `${job.category || "Unknown category"} · Job ID ${job.job_id || "unknown"}`;
+        modalBody.textContent = formatJobDescription(
+          job.job_description || "No job description was returned for this result."
+        );
+        modal.hidden = false;
+        modalClose.focus();
+      }
+
+      function closeJobModal() {
+        modal.hidden = true;
+      }
+
+      modalClose.addEventListener("click", closeJobModal);
+
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) {
+          closeJobModal();
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !modal.hidden) {
+          closeJobModal();
+        }
+      });
+
+      function saveSearchResult(payload, data) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ payload, data }));
+        } catch (error) {
+          console.warn("Could not save search result to localStorage", error);
+        }
+      }
+
+      function restoreSearchResult() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+          if (!saved?.payload || !saved?.data) {
+            return;
+          }
+
+          document.querySelector("#resume").value = saved.payload.resume_text || "";
+          document.querySelector("#top-k").value = saved.payload.top_k || 10;
+          document.querySelector("#category-filter").value = saved.payload.category_filter || "";
+          document.querySelector("#predicted-category").value = saved.payload.predicted_category || "";
+          document.querySelector("#use-llm").checked = Boolean(saved.payload.use_llm);
+          render(saved.data);
+        } catch (error) {
+          console.warn("Could not restore saved search result", error);
+        }
+      }
+
+      function formatJobDescription(description) {
+        const compact = String(description)
+          .replace(/\s+/g, " ")
+          .replace(/([a-zA-Z])([A-Z][a-z])/g, "$1 $2")
+          .replace(/([.:;])(?=[A-Za-z])/g, "$1 ")
+          .replace(/\s+([,.;:])/g, "$1")
+          .trim();
+
+        const readable = isMostlyUppercase(compact) ? toSentenceCase(compact) : compact;
+        return readable
+          .replace(
+            /\b(Summary|Job summary|Primary responsibilities|Responsibilities|Qualifications|Required qualifications|Preferred qualifications|Required skills|Preferred skills|About us|About the team)\b:?/gi,
+            "\n\n$1\n"
+          )
+          .replace(/\. (?=[A-Z][a-z]+(?: [A-Z][a-z]+)*:)/g, ".\n\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function isMostlyUppercase(text) {
+        const letters = text.replace(/[^A-Za-z]/g, "");
+        if (!letters) {
+          return false;
+        }
+        const upper = letters.replace(/[^A-Z]/g, "");
+        return upper.length / letters.length > 0.72;
+      }
+
+      function toSentenceCase(text) {
+        const lower = text.toLowerCase();
+        const sentenceCased = lower.replace(/(^|[.!?]\s+|\n+)([a-z])/g, (match, prefix, letter) => {
+          return `${prefix}${letter.toUpperCase()}`;
+        });
+        return sentenceCased.replace(
+          /\b(sql|bi|dax|c#|vba|api|apis|ui|ux|it|ai|ml|llm|llms|hr|aws|s3|nosql|json|xml|html|css|etl|tfl)\b/gi,
+          (match) => match.toUpperCase()
+        );
+      }
+
       function escapeHtml(value) {
         return String(value)
           .replaceAll("&", "&amp;")
@@ -433,6 +684,8 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           .replaceAll('"', "&quot;")
           .replaceAll("'", "&#039;");
       }
+
+      restoreSearchResult();
     </script>
   </body>
 </html>
