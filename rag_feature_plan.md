@@ -27,14 +27,16 @@ The existing category classifier becomes a **filter / re-rank signal** (e.g. use
 
 ## Tech Stack (locked in)
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Embeddings | **OpenAI `text-embedding-3-small`** | 1536 dims, cheap, strong quality |
-| Vector DB | **Pinecone (managed cloud — online only)** | Serverless Starter tier; HTTPS API; no local fallback. Requires `PINECONE_API_KEY` to run retrieval — graders must use the team's key (provide via `.env` instructions in README). |
-| LLM (generation) | **OpenAI `gpt-4o-mini`** | Cheap, structured output, fast |
-| Existing classifier | (from feature 1) | Reused as metadata filter / re-rank signal |
-| Frontend | **Local web frontend** (stack TBD — likely Next.js or FastAPI + simple HTML) | For demo |
-| Backend | Python (FastAPI recommended) | Houses retrieval + RAG pipeline |
+
+| Layer               | Choice                                                                       | Notes                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Embeddings          | **OpenAI `text-embedding-3-small`**                                          | 1536 dims, cheap, strong quality                                                                                                                                                   |
+| Vector DB           | **Pinecone (managed cloud — online only)**                                   | Serverless Starter tier; HTTPS API; no local fallback. Requires `PINECONE_API_KEY` to run retrieval — graders must use the team's key (provide via `.env` instructions in README). |
+| LLM (generation)    | **OpenAI `gpt-4o-mini`**                                                     | Cheap, structured output, fast                                                                                                                                                     |
+| Existing classifier | (from feature 1)                                                             | Reused as metadata filter / re-rank signal                                                                                                                                         |
+| Frontend            | **Local web frontend** (stack TBD — likely Next.js or FastAPI + simple HTML) | For demo                                                                                                                                                                           |
+| Backend             | Python (FastAPI recommended)                                                 | Houses retrieval + RAG pipeline                                                                                                                                                    |
+
 
 ---
 
@@ -54,8 +56,8 @@ The existing category classifier becomes a **filter / re-rank signal** (e.g. use
 3. Pinecone `query(top_k=10, filter={category: ...})`.
 4. **Compute hybrid match score** (see "Match Score Formula" below) per retrieved JD.
 5. Build RAG prompt:
-   - System: "You are a career coach. Given a resume and candidate jobs, return JSON with `ranked_matches` (with `why_match` citing JD phrases) and `skill_gaps` (skills the resume lacks across these jobs). Do NOT fabricate a numeric score — the backend computes it."
-   - User: resume + top-K jobs (title + skills + truncated description) + pre-computed match scores.
+  - System: "You are a career coach. Given a resume and candidate jobs, return JSON with `ranked_matches` (with `why_match` citing JD phrases) and `skill_gaps` (skills the resume lacks across these jobs). Do NOT fabricate a numeric score — the backend computes it."
+  - User: resume + top-K jobs (title + skills + truncated description) + pre-computed match scores.
 6. Call `gpt-4o-mini` with `response_format=json_object`.
 7. Frontend renders ranked matches with match-score breakdown + consolidated skill-gap list.
 
@@ -69,7 +71,7 @@ A single 0–100 percentage shown next to each retrieved JD in the UI and used f
 
 ```python
 match_score = round(
-    0.5 * semantic_pct        # rescaled cosine similarity
+    0.7 * semantic_pct        # rescaled cosine similarity
   + 0.3 * skill_overlap_pct   # lexical skill set overlap
   + 0.2 * category_bonus      # classifier agreement bonus
 , 1)
@@ -77,27 +79,25 @@ match_score = round(
 
 ### Component definitions
 
-1. **`semantic_pct`** — anchor-rescaled cosine similarity, clamped to [0, 100]:
-   ```python
+1. `**semantic_pct**` — anchor-rescaled cosine similarity, clamped to [0, 100]:
+  ```python
    FLOOR, CEILING = 0.25, 0.85   # calibrated on the dataset (see below)
    semantic_pct = max(0, min(1, (cosine_sim - FLOOR) / (CEILING - FLOOR))) * 100
-   ```
-   - **Why rescale**: raw cosine for OpenAI embeddings rarely exceeds ~0.85 even for near-identical text. Showing raw 0.62 as "62%" misleads users.
-   - **Calibration**: pick `FLOOR` = mean cosine of ~500 random cross-category JD pairs (≈0.2–0.3); pick `CEILING` = 0.85 (top of empirical range) or 1.0 if you'd rather have a hard ceiling.
-
-2. **`skill_overlap_pct`** — fraction of the JD's required skills that appear in the resume:
-   ```python
+  ```
+  - **Why rescale**: raw cosine for OpenAI embeddings rarely exceeds ~0.85 even for near-identical text. Showing raw 0.62 as "62%" misleads users.
+  - **Calibration**: pick `FLOOR` = mean cosine of ~500 random cross-category JD pairs (≈0.2–0.3); pick `CEILING` = 0.85 (top of empirical range) or 1.0 if you'd rather have a hard ceiling.
+2. `**skill_overlap_pct`** — fraction of the JD's required skills that appear in the resume:
+  ```python
    skill_overlap_pct = len(resume_skills & jd_skills) / len(jd_skills) * 100
-   ```
-   - Skills are lowercased + stripped before set intersection.
-   - This is the **mechanical, verifiable** signal — easy to defend in the report.
-
-3. **`category_bonus`** — uses the existing classifier from feature 1:
-   ```python
+  ```
+  - Skills are lowercased + stripped before set intersection.
+  - This is the **mechanical, verifiable** signal — easy to defend in the report.
+3. `**category_bonus`** — uses the existing classifier from feature 1:
+  ```python
    category_bonus = 100 if predicted_resume_category == jd_category else 0
-   ```
-   - Run the trained classifier on the resume; bonus fires when it agrees with the JD's category.
-   - This is the explicit **bridge between feature 1 (classification) and feature 2 (RAG)** — strengthens the project's "single coherent narrative" framing.
+  ```
+  - Run the trained classifier on the resume; bonus fires when it agrees with the JD's category.
+  - This is the explicit **bridge between feature 1 (classification) and feature 2 (RAG)** — strengthens the project's "single coherent narrative" framing.
 
 ### UI display
 
@@ -187,3 +187,4 @@ Pick one or more before writing the report's Experiment Results section.
 - Decide whether to chunk long `job_description`s (>8k chars) before embedding or truncate.
 - Decide eval methodology (see TODO).
 - Decide who on the team owns which file (for the Team Member Contribution section of the report).
+

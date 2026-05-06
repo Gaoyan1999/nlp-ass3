@@ -461,17 +461,19 @@
       }
 
       /* =========================================================
-         SLIDE 3 — ARCHITECTURE DIAGRAM (TWO LANES)
-         Top lane (offline):  Dataset → Embed → Pinecone
-         Bottom lane (online): CV → Embed → Retrieve → Score → LLM
-         The two lanes share Pinecone (col 3 of a 5-col grid):
-         offline writes DOWN into it, online reads UP from it.
+         SLIDE 3 — ARCHITECTURE DIAGRAM
+         Retrieval topology: one offline ingestion path writes vectors;
+         one online resume path queries the same vector store.
          ========================================================= */
       .arch-diagram {
-        display: flex;
-        flex-direction: column;
-        gap: clamp(0.25rem, 0.7vw, 0.55rem);
+        display: grid;
+        grid-template-columns: 1.15fr 0.95fr 1.1fr 0.78fr 1.05fr 0.72fr 0.9fr;
+        grid-template-rows: auto minmax(30px, 0.34fr) auto minmax(20px, 0.22fr) auto;
+        gap: clamp(0.55rem, 1vw, 0.9rem);
+        align-items: center;
         margin-top: clamp(0.5rem, 1.2vw, 1rem);
+        min-height: clamp(300px, 46vh, 430px);
+        position: relative;
       }
       .lane-header {
         font-family: var(--font-display);
@@ -491,16 +493,6 @@
       }
       .lane-header.offline { color: var(--muted); }
       .lane-header.online  { color: var(--accent); }
-
-      /* 5-column grid shared by both lanes (and the connector row),
-         so column 3 always lines up — that's where Pinecone (top lane)
-         and Retrieve (bottom lane) sit, vertically aligned. */
-      .lane-cells,
-      .connector-row {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: clamp(0.3rem, 0.7vw, 0.6rem);
-      }
 
       .arch-cell {
         background: var(--bg-paper);
@@ -526,113 +518,206 @@
         line-height: 1.35;
       }
 
-      /* Offline cells = quiet / dashed (one-time setup) */
-      .offline-cells .arch-cell {
+      .arch-cell.source {
         background: var(--bg-soft);
         border-color: var(--rule-soft);
         border-style: dashed;
         color: var(--ink-2);
       }
-      /* Online cells = solid + red top edge (live query path) */
-      .online-cells .arch-cell {
+      .arch-cell.live {
         border-top: 3px solid var(--accent);
       }
 
-      /* The shared Pinecone cell — both lanes touch it visually.
-         Solid border, full opacity, slight emphasis. */
-      .arch-cell.shared {
-        border: 2px solid var(--ink) !important;
-        border-style: solid !important;
-        background: var(--bg-paper) !important;
-        color: var(--ink) !important;
-        box-shadow: 0 0 0 4px var(--bg-paper);
-      }
-
-      /* Horizontal arrows between adjacent cells in the same lane */
-      .arch-cell:not(.spacer) + .arch-cell:not(.spacer)::before {
-        content: "→";
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        font-family: var(--font-display);
-        font-weight: 900;
-        font-size: clamp(0.75rem, 1.15vw, 1rem);
+      .vector-db {
+        border: 2px solid var(--accent);
         color: var(--accent);
-        background: var(--bg-paper);
-        padding: 0 0.15em;
-        z-index: 2;
-      }
-      .offline-cells .arch-cell:not(.spacer) + .arch-cell:not(.spacer)::before {
-        color: var(--muted);
-      }
-
-      /* Spacer cells leave the grid track empty (cols 4-5 of offline lane) */
-      .arch-cell.spacer {
-        visibility: hidden;
-        border: none;
-        background: transparent;
-        min-height: 0;
-      }
-
-      /* Connector row between the two lanes — only column 3 is filled.
-         A short vertical span with two arrows: ↓ (store) and ↑ (query). */
-      .connector-row { min-height: clamp(28px, 4vh, 44px); }
-      .connector-cell {
-        grid-column: 3;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+        background: #fffaf8;
+        min-height: clamp(112px, 16vh, 150px);
         justify-content: center;
-        gap: 0.15rem;
-        position: relative;
       }
-      .connector-cell .arrows {
-        display: flex;
-        gap: clamp(0.6rem, 1.2vw, 1rem);
-        font-family: var(--font-display);
-        font-weight: 900;
-        font-size: clamp(0.95rem, 1.6vw, 1.4rem);
-        line-height: 1;
-      }
-      .connector-cell .arrows .dn { color: var(--ink); }
-      .connector-cell .arrows .up { color: var(--accent); }
-      .connector-cell .lbl {
-        font-family: var(--font-display);
-        font-weight: 700;
-        font-size: clamp(0.55rem, 0.78vw, 0.68rem);
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--muted);
-      }
-      /* Faint guide lines on either side of the connector arrows,
-         showing they belong to the column-3 channel */
-      .connector-cell::before,
-      .connector-cell::after {
+      .vector-db::before,
+      .vector-db::after {
         content: "";
         position: absolute;
-        top: 50%;
-        height: 1px;
-        background: var(--rule-soft);
-        width: 18%;
+        left: 12%;
+        right: 12%;
+        height: clamp(9px, 1.4vh, 13px);
+        border: 2px solid var(--accent);
+        border-left-color: transparent;
+        border-right-color: transparent;
+        border-radius: 50%;
       }
-      .connector-cell::before { left: 0; }
-      .connector-cell::after { right: 0; }
+      .vector-db::before { top: -7px; border-bottom-color: transparent; }
+      .vector-db::after { bottom: -7px; border-top-color: transparent; }
 
-      /* Mobile fallback: stack everything vertically, drop the column trick */
-      @media (max-width: 760px) {
-        .lane-cells,
-        .connector-row {
+      .arrow {
+        font-family: var(--font-display);
+        font-weight: 900;
+        color: var(--ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+      .arrow .line {
+        height: 1px;
+        flex: 1;
+        background: currentColor;
+        min-width: 24px;
+      }
+      .arrow .head {
+        font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+        line-height: 1;
+      }
+      .arrow .label {
+        position: absolute;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.54rem, 0.82vw, 0.7rem);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: var(--bg-paper);
+        padding: 0 0.35em;
+        color: var(--muted);
+        white-space: nowrap;
+        top: 50%;
+        transform: translateY(-150%);
+      }
+      .arrow.live { color: var(--accent); }
+
+      .flow-note {
+        font-family: var(--font-mono);
+        font-size: clamp(0.56rem, 0.8vw, 0.68rem);
+        color: var(--muted);
+        line-height: 1.35;
+        align-self: start;
+      }
+
+      .offline-title { grid-column: 1 / 4; grid-row: 1; align-self: end; }
+      .online-title { grid-column: 1 / 4; grid-row: 3; align-self: end; color: var(--accent); }
+      .job-node { grid-column: 1; grid-row: 2; }
+      .job-embed-node { grid-column: 3; grid-row: 2; }
+      .vector-node { grid-column: 5; grid-row: 1 / 3; }
+      .cv-node { grid-column: 1; grid-row: 4 / 6; }
+      .cv-embed-node { grid-column: 3; grid-row: 4 / 6; }
+      .match-node { grid-column: 5 / 7; grid-row: 4; }
+      .score-node { grid-column: 7; grid-row: 4; }
+      .gaps-node { grid-column: 7; grid-row: 5; }
+      .job-to-embed { grid-column: 2; grid-row: 2; }
+      .embed-to-db { grid-column: 4; grid-row: 2; }
+      .cv-to-embed { grid-column: 2; grid-row: 4 / 6; }
+      .match-to-score { grid-column: 6 / 8; grid-row: 4; transform: translateX(36%); pointer-events: none; }
+      .score-to-gaps {
+        grid-column: 7;
+        grid-row: 4 / 6;
+        align-self: stretch;
+        justify-self: center;
+        flex-direction: column;
+        width: 34px;
+      }
+      .score-to-gaps .line {
+        width: 1px;
+        height: 100%;
+        min-width: 1px;
+        min-height: 28px;
+      }
+      .score-to-gaps .label {
+        top: 48%;
+        left: 50%;
+        transform: translate(-50%, -120%);
+      }
+      .retrieval-link {
+        grid-column: 4 / 6;
+        grid-row: 3 / 5;
+        align-self: stretch;
+        justify-self: stretch;
+        position: relative;
+      }
+      .retrieval-link::before {
+        content: "";
+        position: absolute;
+        left: 12%;
+        right: 7%;
+        top: 26%;
+        height: 1px;
+        background: var(--ink);
+        transform: rotate(-32deg);
+        transform-origin: left center;
+      }
+      .retrieval-link::after {
+        content: "↙";
+        position: absolute;
+        right: 6%;
+        bottom: 12%;
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: clamp(1.1rem, 1.8vw, 1.5rem);
+        color: var(--ink);
+      }
+      .retrieval-link span {
+        position: absolute;
+        left: 18%;
+        top: 36%;
+        transform: rotate(-32deg);
+        transform-origin: left center;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(0.55rem, 0.82vw, 0.7rem);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: var(--bg-paper);
+        padding: 0 0.35em;
+      }
+
+      @media (max-width: 850px) {
+        .arch-diagram {
           grid-template-columns: 1fr;
+          grid-template-rows: none;
+          gap: 0.55rem;
+          min-height: 0;
         }
-        .arch-cell.spacer { display: none; }
-        .arch-cell:not(.spacer) + .arch-cell:not(.spacer)::before {
-          content: "↓";
+        .arch-diagram > * {
+          grid-column: 1 !important;
+          grid-row: auto !important;
+          transform: none !important;
+        }
+        .arrow {
+          min-height: 22px;
+        }
+        .retrieval-link {
+          min-height: 32px;
+        }
+        .retrieval-link::before {
+          left: 8%;
+          right: 8%;
+          top: 50%;
+          transform: none;
+        }
+        .retrieval-link::after {
+          right: 4%;
+          top: 50%;
+          bottom: auto;
+          transform: translateY(-50%);
+          content: "→";
+        }
+        .retrieval-link span {
           left: 50%;
-          top: calc(-1 * clamp(0.3rem, 0.7vw, 0.6rem));
-          transform: translate(-50%, -50%);
+          top: 50%;
+          transform: translate(-50%, -150%);
         }
-        .connector-cell { grid-column: 1; }
+        .score-to-gaps {
+          flex-direction: row;
+          width: auto;
+          min-height: 22px;
+        }
+        .score-to-gaps .line {
+          width: auto;
+          height: 1px;
+          min-width: 24px;
+          min-height: 1px;
+        }
       }
 
       /* =========================================================
@@ -1016,11 +1101,10 @@
     </section>
 
     <!-- =========================================================
-         SLIDE 3 — ARCHITECTURE (TWO LANES, ONE VECTOR STORE)
-         Top lane (offline)  : Dataset → Embed → Pinecone
-         Bottom lane (online): CV → Embed → Retrieve → Score → LLM
-         The Pinecone cell sits in column 3 of a 5-col grid; Retrieve
-         sits in column 3 of the same grid — they line up vertically.
+         SLIDE 3 — ARCHITECTURE (OFFLINE INGESTION + ONLINE QUERY)
+         The layout follows the hand-drawn retrieval topology:
+         Job dataset writes vectors to Pinecone; CV embedding queries
+         Pinecone for top-k job matches, then scoring and LLM gaps run.
          ========================================================= -->
     <section class="slide" data-title="Architecture">
       <div class="meta-top">
@@ -1030,7 +1114,7 @@
 
       <div class="slide-content">
         <span class="section-eyebrow reveal r1">§ 02 · Architecture</span>
-        <h2 class="section-title reveal r2">Two flows.<br/>One vector store.</h2>
+        <h2 class="section-title reveal r2">Embed jobs once.<br/>Retrieve matches per CV.</h2>
         <p class="section-lede reveal r3">
           We <em class="lede-em">index</em> the dataset into Pinecone once.
           Each resume <em class="lede-em">queries</em> that same index, then
@@ -1038,65 +1122,87 @@
         </p>
 
         <div class="arch-diagram reveal r4">
-          <!-- ===== Lane 1 · OFFLINE (one-time indexing) ===== -->
-          <div class="lane-header offline">
+          <div class="lane-header offline offline-title">
             <span>① Offline · once per dataset</span>
             <span class="tick"></span>
           </div>
-          <div class="lane-cells offline-cells">
-            <div class="arch-cell">
-              <span class="name">Job Dataset</span>
-              <span class="meta">HuggingFace<br/>1,167 jobs · 5 cats</span>
-            </div>
-            <div class="arch-cell">
-              <span class="name">Embed</span>
-              <span class="meta">text-embedding-<br/>3-small · 1536-d</span>
-            </div>
-            <div class="arch-cell shared">
-              <span class="name">Pinecone</span>
-              <span class="meta">vector index<br/>cosine · 1167 vecs</span>
-            </div>
-            <div class="arch-cell spacer"></div>
-            <div class="arch-cell spacer"></div>
+
+          <div class="arch-cell source job-node">
+            <span class="name">Job Dataset</span>
+            <span class="meta">job title · description<br/>skills · category</span>
           </div>
 
-          <!-- ===== Connector · column 3 only (Pinecone ↔ Retrieve) ===== -->
-          <div class="connector-row" aria-hidden="true">
-            <div class="connector-cell">
-              <span class="arrows">
-                <span class="dn">↓</span>
-                <span class="up">↑</span>
-              </span>
-              <span class="lbl">store · query</span>
-            </div>
+          <div class="arrow job-to-embed">
+            <span class="label">embedding</span>
+            <span class="line"></span>
+            <span class="head">→</span>
           </div>
 
-          <!-- ===== Lane 2 · ONLINE (per-resume query) ===== -->
-          <div class="lane-cells online-cells">
-            <div class="arch-cell">
-              <span class="name">Resume CV</span>
-              <span class="meta">paste text<br/>or upload PDF</span>
-            </div>
-            <div class="arch-cell">
-              <span class="name">Embed</span>
-              <span class="meta">same model<br/>same vector space</span>
-            </div>
-            <div class="arch-cell">
-              <span class="name">Retrieve</span>
-              <span class="meta">top-K = 10<br/>cosine sim</span>
-            </div>
-            <div class="arch-cell">
-              <span class="name">Score</span>
-              <span class="meta">0.5 sem · 0.3 skill<br/>0.2 category</span>
-            </div>
-            <div class="arch-cell">
-              <span class="name">LLM Gaps</span>
-              <span class="meta">gpt-4o-mini<br/>grounded JSON</span>
-            </div>
+          <div class="arch-cell source job-embed-node">
+            <span class="name">Embedding Job</span>
+            <span class="meta">OpenAI embedding<br/>1536-d vector</span>
           </div>
-          <div class="lane-header online">
+
+          <div class="arrow embed-to-db">
+            <span class="label">save</span>
+            <span class="line"></span>
+            <span class="head">→</span>
+          </div>
+
+          <div class="arch-cell vector-db vector-node">
+            <span class="name">Vector DB</span>
+            <span class="meta">Pinecone index<br/>job vectors + metadata</span>
+          </div>
+
+          <div class="lane-header online online-title">
             <span class="tick"></span>
             <span>② Online · once per resume</span>
+          </div>
+
+          <div class="arch-cell live cv-node">
+            <span class="name">CV</span>
+            <span class="meta">PDF / Markdown<br/>resume text</span>
+          </div>
+
+          <div class="arrow live cv-to-embed">
+            <span class="label">embed</span>
+            <span class="line"></span>
+            <span class="head">→</span>
+          </div>
+
+          <div class="arch-cell live cv-embed-node">
+            <span class="name">Embedding CV</span>
+            <span class="meta">same model<br/>same vector space</span>
+          </div>
+
+          <div class="retrieval-link" aria-hidden="true">
+            <span>retrieval</span>
+          </div>
+
+          <div class="arch-cell live match-node">
+            <span class="name">Best Match Job</span>
+            <span class="meta">top-k retrieved postings<br/>with similarity scores</span>
+          </div>
+
+          <div class="arrow live match-to-score">
+            <span class="line"></span>
+            <span class="head">→</span>
+          </div>
+
+          <div class="arch-cell live score-node">
+            <span class="name">Score</span>
+            <span class="meta">semantic · skill<br/>category blend</span>
+          </div>
+
+          <div class="arrow live score-to-gaps">
+            <span class="label">LLM</span>
+            <span class="line"></span>
+            <span class="head">↓</span>
+          </div>
+
+          <div class="arch-cell live gaps-node">
+            <span class="name">Gaps</span>
+            <span class="meta">grounded JSON<br/>missing skills + notes</span>
           </div>
         </div>
       </div>
