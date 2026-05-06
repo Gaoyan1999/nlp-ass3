@@ -1,1 +1,3 @@
 data/job_postings.json
+.env
+local.env
