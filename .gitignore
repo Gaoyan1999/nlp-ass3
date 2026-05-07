@@ -22,6 +22,6 @@ local.env
 # Generated local data
 data/job_postings.json
 
-# Large local model weights. The default BiLSTM/TextCNN artifacts are tracked;
-# this DistilBERT weight file is too large for normal GitHub pushes without LFS.
-saved_models/distilbert/model.safetensors
+# Optional DistilBERT artifacts are large/derived and require local weights.
+# The default BiLSTM/TextCNN saved models remain tracked.
+saved_models/distilbert/

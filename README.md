@@ -79,7 +79,7 @@ To force a different saved model:
 RESUME_CLASSIFIER_MODEL=TextCNN
 ```
 
-If the full local DistilBERT weights are available:
+If the full local `saved_models/distilbert/` directory is available:
 
 ```bash
 RESUME_CLASSIFIER_MODEL=DistilBERT
