@@ -39,6 +39,20 @@
         padding: 28px 0 18px;
       }
 
+      .top-nav {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+
+      .top-nav a {
+        color: var(--accent-dark);
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
       h1 {
         margin: 0 0 6px;
         font-size: 30px;
@@ -170,7 +184,7 @@
 
       .resume-category-card {
         display: grid;
-        grid-template-columns: minmax(180px, 1.25fr) repeat(2, minmax(120px, 0.75fr));
+        grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(120px, 0.8fr));
         gap: 12px;
         margin-bottom: 14px;
         border: 1px solid #a7d8d2;
@@ -415,7 +429,10 @@
   </head>
   <body>
     <header>
-      <h1>Resume Job RAG Matcher</h1>
+      <div class="top-nav">
+        <h1>Resume Job RAG Matcher</h1>
+        <a href="/eval">LLM Eval</a>
+      </div>
       <p class="subhead">Semantic job retrieval with deterministic match scoring and grounded skill-gap output.</p>
     </header>
 
@@ -465,6 +482,19 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
             <input id="use-llm" type="checkbox" checked />
             Generate LLM explanation
           </label>
+
+          <div class="upload-row">
+            <label for="llm-model">OpenAI explanation model</label>
+            <select id="llm-model">
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="gpt-5.5">gpt-5.5</option>
+              <option value="gpt-5.4">gpt-5.4</option>
+              <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+              <option value="gpt-5.2">gpt-5.2</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            </select>
+          </div>
 
           <button id="submit-button" type="submit">Run matcher</button>
           <div id="error"></div>
@@ -528,6 +558,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           category_filter: document.querySelector("#category-filter").value || null,
           predicted_category: document.querySelector("#predicted-category").value || null,
           use_llm: document.querySelector("#use-llm").checked,
+          llm_model: document.querySelector("#llm-model").value || null,
         };
 
         try {
@@ -576,6 +607,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
         formData.append("category_filter", payload.category_filter || "");
         formData.append("predicted_category", payload.predicted_category || "");
         formData.append("use_llm", String(payload.use_llm));
+        formData.append("llm_model", payload.llm_model || "");
         return formData;
       }
 
@@ -627,6 +659,10 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
             <div>
               <div class="category-summary-label">Retrieval filter</div>
               <div class="category-summary-value">${escapeHtml(formatCategoryLabel(retrievalFilter))}</div>
+            </div>
+            <div>
+              <div class="category-summary-label">Explanation model</div>
+              <div class="category-summary-value">${escapeHtml(data.generation_model || "None")}</div>
             </div>
           </div>
         `;
@@ -738,6 +774,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           document.querySelector("#category-filter").value = saved.payload.category_filter || "";
           document.querySelector("#predicted-category").value = saved.payload.predicted_category || "";
           document.querySelector("#use-llm").checked = Boolean(saved.payload.use_llm);
+          document.querySelector("#llm-model").value = saved.payload.llm_model || "gpt-4o-mini";
           render(saved.data);
         } catch (error) {
           console.warn("Could not restore saved search result", error);

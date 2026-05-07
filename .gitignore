@@ -21,6 +21,7 @@ local.env
 
 # Generated local data
 data/job_postings.json
+data/llm_eval_records.jsonl
 
 # Optional DistilBERT artifacts are large/derived and require local weights.
 # The default BiLSTM/TextCNN saved models remain tracked.

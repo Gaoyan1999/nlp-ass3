@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LLM Eval - Resume Job RAG Matcher</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f2933;
+        --muted: #5f6f7c;
+        --line: #d7dde3;
+        --panel: #ffffff;
+        --page: #f4f6f8;
+        --accent: #0f766e;
+        --accent-dark: #0b5f59;
+        --warn: #9a3412;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      header,
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+      }
+
+      header {
+        padding: 28px 0 18px;
+      }
+
+      .top-nav {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+      }
+
+      a {
+        color: var(--accent-dark);
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 30px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .subhead {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(280px, 360px) 1fr;
+        gap: 18px;
+        padding-bottom: 40px;
+      }
+
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 20px;
+      }
+
+      h3 {
+        font-size: 16px;
+      }
+
+      button {
+        min-height: 38px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-dark);
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.7;
+      }
+
+      label {
+        display: block;
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      select {
+        width: 100%;
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+        padding: 8px 10px;
+      }
+
+      .record-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .record-button {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        padding: 10px;
+        text-align: left;
+      }
+
+      .record-button:hover,
+      .record-button.active {
+        border-color: var(--accent);
+        background: #eef8f6;
+      }
+
+      .record-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-weight: 900;
+      }
+
+      .record-meta,
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .detail-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+        margin-bottom: 14px;
+      }
+
+      .eval-button {
+        min-width: 150px;
+        padding: 0 14px;
+      }
+
+      .score-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+        margin: 14px 0;
+      }
+
+      .score-card {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #f8fafb;
+        padding: 10px;
+      }
+
+      .score-card strong {
+        display: block;
+        margin-top: 4px;
+        color: var(--accent-dark);
+        font-size: 20px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-top: 12px;
+        padding: 12px;
+      }
+
+      .panel pre {
+        max-height: 360px;
+        overflow: auto;
+        margin: 10px 0 0;
+        white-space: pre-wrap;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .job-row {
+        display: grid;
+        gap: 6px;
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+        margin-top: 10px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: #fff;
+        font-size: 12px;
+      }
+
+      .empty,
+      .error {
+        margin-top: 14px;
+        border-radius: 6px;
+        padding: 12px;
+      }
+
+      .empty {
+        color: var(--muted);
+        background: #f8fafb;
+      }
+
+      .error {
+        color: #991b1b;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+      }
+
+      @media (max-width: 900px) {
+        main,
+        .score-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .detail-header {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="top-nav">
+        <h1>LLM Eval</h1>
+        <a href="/">Matcher</a>
+      </div>
+      <p class="subhead">Review generated explanations with an independent LLM judge.</p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Generation Records</h2>
+        <div class="muted">Records are created when the matcher runs with LLM explanations enabled.</div>
+        <div id="record-list" class="record-list"></div>
+      </section>
+
+      <section>
+        <div id="detail" class="empty">Select a generation record to inspect and evaluate.</div>
+      </section>
+    </main>
+
+    <script>
+      const recordListEl = document.querySelector("#record-list");
+      const detailEl = document.querySelector("#detail");
+      let records = [];
+      let selectedRecordId = null;
+
+      loadRecords();
+
+      async function loadRecords() {
+        try {
+          const response = await fetch("/eval-records");
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.detail || "Could not load eval records.");
+          }
+          records = data.records || [];
+          renderRecordList();
+        } catch (error) {
+          recordListEl.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      function renderRecordList() {
+        if (!records.length) {
+          recordListEl.innerHTML = `<div class="empty">No records yet. Run the matcher with LLM explanation enabled first.</div>`;
+          return;
+        }
+
+        recordListEl.innerHTML = records
+          .map(
+            (record) => `
+              <button class="record-button ${record.record_id === selectedRecordId ? "active" : ""}" data-record-id="${escapeHtml(record.record_id)}">
+                <div class="record-title">
+                  <span>${escapeHtml(record.predicted_category || "No category")}</span>
+                  <span>${escapeHtml(recordScoreLabel(record))}</span>
+                </div>
+                <div class="record-meta">${escapeHtml(formatDate(record.created_at))}</div>
+                <div class="record-meta">Generated by ${escapeHtml(record.generation_model || "unknown")}</div>
+                <div class="record-meta">${escapeHtml(record.match_count)} matches · ${escapeHtml(record.recommendation || "not evaluated")}</div>
+              </button>
+            `
+          )
+          .join("");
+      }
+
+      recordListEl.addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-record-id]");
+        if (!button) {
+          return;
+        }
+        selectedRecordId = button.dataset.recordId;
+        renderRecordList();
+        await loadRecordDetail(selectedRecordId);
+      });
+
+      async function loadRecordDetail(recordId) {
+        detailEl.className = "empty";
+        detailEl.textContent = "Loading record...";
+        try {
+          const response = await fetch(`/eval-records/${encodeURIComponent(recordId)}`);
+          const record = await response.json();
+          if (!response.ok) {
+            throw new Error(record.detail || "Could not load record.");
+          }
+          renderDetail(record);
+        } catch (error) {
+          detailEl.className = "error";
+          detailEl.textContent = error.message;
+        }
+      }
+
+      function renderDetail(record) {
+        detailEl.className = "";
+        detailEl.innerHTML = `
+          <div class="detail-header">
+            <div>
+              <h2>${escapeHtml(record.predicted_category || "No predicted category")}</h2>
+              <div class="muted">${escapeHtml(record.record_id)} · ${escapeHtml(formatDate(record.created_at))}</div>
+              <div class="muted">Generation model: ${escapeHtml(record.generation_model || "unknown")}</div>
+              ${record.evaluation?.evaluator_model ? `<div class="muted">Evaluator model: ${escapeHtml(record.evaluation.evaluator_model)}</div>` : ""}
+            </div>
+            <button class="eval-button" id="run-eval" type="button">Run LLM eval</button>
+          </div>
+          ${record.evaluation ? renderEvaluation(record.evaluation) : `<div class="empty">Not evaluated yet.</div>`}
+          <div class="panel">
+            <h3>Generated Output</h3>
+            <pre>${escapeHtml(JSON.stringify(record.generation, null, 2))}</pre>
+          </div>
+          <div class="panel">
+            <h3>Backend Evidence</h3>
+            ${record.matches.slice(0, 8).map(renderMatchEvidence).join("")}
+          </div>
+          <div class="panel">
+            <h3>Resume Text</h3>
+            <pre>${escapeHtml(record.resume_text)}</pre>
+          </div>
+        `;
+
+        document.querySelector("#run-eval").addEventListener("click", () => runEval(record.record_id));
+      }
+
+      async function runEval(recordId) {
+        const button = document.querySelector("#run-eval");
+        button.disabled = true;
+        button.textContent = "Evaluating...";
+        try {
+          const response = await fetch(`/eval-records/${encodeURIComponent(recordId)}/evaluate`, {
+            method: "POST",
+          });
+          const record = await response.json();
+          if (!response.ok) {
+            throw new Error(record.detail || "Evaluation failed.");
+          }
+          await loadRecords();
+          selectedRecordId = recordId;
+          renderRecordList();
+          renderDetail(record);
+        } catch (error) {
+          detailEl.insertAdjacentHTML("afterbegin", `<div class="error">${escapeHtml(error.message)}</div>`);
+          button.disabled = false;
+          button.textContent = "Run LLM eval";
+        }
+      }
+
+      function renderEvaluation(evaluation) {
+        const criteria = [
+          ["Groundedness", evaluation.groundedness],
+          ["Helpfulness", evaluation.helpfulness],
+          ["No hallucination", evaluation.hallucination_control],
+          ["Actionability", evaluation.actionability],
+          ["Evidence use", evaluation.evidence_use],
+        ];
+        const criterionScores = criteria.map(([, item]) => Number(item?.score || 0));
+        const totalScore = criterionScores.reduce((sum, score) => sum + score, 0);
+        return `
+          <div class="panel">
+            <h3>Evaluator Result</h3>
+            <div class="score-grid">
+              ${criteria
+                .map(
+                  ([label, item]) => `
+                    <div class="score-card">
+                      <span>${escapeHtml(label)}</span>
+                      <strong>${escapeHtml(item?.score || "-")}/5</strong>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+            <p><strong>Total:</strong> ${escapeHtml(totalScore)}/25 · ${escapeHtml(evaluation.recommendation)}</p>
+            <p><strong>Evaluator model:</strong> ${escapeHtml(evaluation.evaluator_model || "unknown")}</p>
+            <p>${escapeHtml(evaluation.summary || "")}</p>
+            ${criteria
+              .map(([label, item]) => `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(item?.reason || "")}</p>`)
+              .join("")}
+            ${evaluation.hallucination_control?.unsupported_claims?.length ? `<p><strong>Unsupported claims:</strong> ${escapeHtml(evaluation.hallucination_control.unsupported_claims.join("; "))}</p>` : ""}
+          </div>
+        `;
+      }
+
+      function totalFromSummary(record) {
+        const scores = record.criterion_scores || {};
+        return [
+          scores.groundedness,
+          scores.helpfulness,
+          scores.hallucination_control,
+          scores.actionability,
+          scores.evidence_use,
+        ].reduce((sum, score) => sum + Number(score || 0), 0);
+      }
+
+      function recordScoreLabel(record) {
+        if (!record.evaluated) {
+          return "New";
+        }
+        const scores = record.criterion_scores || {};
+        const hasAllScores = [
+          scores.groundedness,
+          scores.helpfulness,
+          scores.hallucination_control,
+          scores.actionability,
+          scores.evidence_use,
+        ].every((score) => Number.isFinite(Number(score)) && Number(score) > 0);
+        return hasAllScores ? `${totalFromSummary(record)}/25` : "Re-eval";
+      }
+
+      function renderMatchEvidence(item) {
+        const job = item.job || {};
+        const score = item.score || {};
+        return `
+          <div class="job-row">
+            <strong>${escapeHtml(job.job_title || "Untitled job")}</strong>
+            <div class="muted">${escapeHtml(job.category || "Unknown")} · Job ID ${escapeHtml(job.job_id || "")} · Score ${escapeHtml(score.match_score || "-")}%</div>
+            <div class="chips">
+              ${(score.matched_skills || []).slice(0, 10).map((skill) => `<span class="chip">${escapeHtml(skill)}</span>`).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function formatDate(value) {
+        if (!value) {
+          return "unknown date";
+        }
+        return new Date(value).toLocaleString();
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+    </script>
+  </body>
+</html>
