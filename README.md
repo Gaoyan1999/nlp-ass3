@@ -53,6 +53,7 @@ Optional values:
 ```text
 OPENAI_EMBEDDING_MODEL
 OPENAI_CHAT_MODEL
+OPENAI_EVAL_MODEL
 PINECONE_CLOUD
 PINECONE_REGION
 RESUME_CLASSIFIER_MODEL
@@ -102,6 +103,9 @@ The category bonus is `100` when the predicted resume category matches the job c
 7. API and frontend:
    `api/main.py` exposes `POST /match`, `POST /match-pdf`, `/categories`, and `/health`. It also serves `frontend/index.html`, where users paste a resume, upload a PDF, choose filters, run matching, see the predicted resume category, and inspect job matches.
 
+8. LLM evaluation:
+   When `/match` runs with LLM explanations enabled, the system saves a local eval record to `data/llm_eval_records.jsonl`. The `/eval` page lists these records and can ask a separate evaluator LLM to judge the generated explanation quality.
+
 ## API Endpoints
 
 Health check:
@@ -114,6 +118,12 @@ List supported categories:
 
 ```bash
 curl http://127.0.0.1:8000/categories
+```
+
+Open the LLM eval page:
+
+```text
+http://127.0.0.1:8000/eval
 ```
 
 Run a text resume match:
@@ -195,6 +205,34 @@ python3 -m pytest
 
 The tests do not call OpenAI or Pinecone. They cover category normalisation, scoring, and deterministic generator fallback.
 
+## LLM Evaluation
+
+The eval page is designed for the report's generation-quality evaluation. It does not evaluate the category classifier.
+
+Workflow:
+
+1. Start the app with `local.env`.
+2. Open `http://127.0.0.1:8000`.
+3. Keep `Generate LLM explanation` checked and run the matcher.
+4. Choose the OpenAI explanation model, for example `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.2`, `gpt-4o-mini`, `gpt-4o`, or `gpt-4.1-mini`.
+5. Open `http://127.0.0.1:8000/eval`.
+6. Select a saved generation record.
+7. Click `Run LLM eval`.
+
+Each eval record stores which model generated the explanation. The evaluator uses `OPENAI_EVAL_MODEL` when set, otherwise it defaults to `gpt-4o-mini`.
+
+The evaluator LLM scores:
+
+```text
+Groundedness: whether claims are supported by the resume, retrieved jobs, skills, or backend scores.
+Helpfulness: whether the explanation helps the user understand the match.
+No hallucination: whether unsupported skills, credentials, job facts, or numeric claims are avoided.
+Actionability: whether skill-gap suggestions are specific and tied to missing skills.
+Evidence use: whether the explanation clearly uses backend evidence.
+```
+
+The evaluator returns a 1-5 score for each criterion, a pass/review/fail recommendation, and a short summary. The app computes the total score by summing the five criteria, so the maximum score is 25. Records are stored locally in `data/llm_eval_records.jsonl`, which is ignored by Git because it may contain resume text.
+
 ## Report Notes
 
 For the report, describe the system as a two-feature integration:
@@ -204,3 +242,4 @@ For the report, describe the system as a two-feature integration:
 - The final score combines semantic similarity, explicit skill overlap, and category agreement.
 - The frontend shows both the predicted resume category and each job's score breakdown, making the result explainable instead of only showing a final percentage.
 - The LLM is used only for narrative explanations and skill-gap wording; the numeric score is computed deterministically in Python.
+- LLM output is evaluated separately by an evaluator LLM for groundedness, helpfulness, hallucination control, actionability, and evidence use.
