@@ -1,0 +1,17 @@
+{
+  "label_names": [
+    "business-development",
+    "finance",
+    "hr",
+    "information-technology",
+    "sales"
+  ],
+  "num_classes": 5,
+  "max_seq_len": 256,
+  "max_vocab_size": 20000,
+  "min_token_freq": 1,
+  "use_title_in_input": true,
+  "transformer_model_name": "distilbert-base-uncased",
+  "transformer_max_len": 256,
+  "best_model_name": "BiLSTM"
+}

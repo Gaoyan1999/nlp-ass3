@@ -1,3 +1,27 @@
-data/job_postings.json
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment and editor/tool state
 .env
+.env.*
+!.env.example
 local.env
+.DS_Store
+.claude/
+
+# Generated local data
+data/job_postings.json
+
+# Optional DistilBERT artifacts are large/derived and require local weights.
+# The default BiLSTM/TextCNN saved models remain tracked.
+saved_models/distilbert/

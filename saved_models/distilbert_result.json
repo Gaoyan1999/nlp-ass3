@@ -1,0 +1,8 @@
+{
+  "model": "DistilBERT",
+  "accuracy": 0.9943181818181818,
+  "macro_precision": 0.9945945945945945,
+  "macro_recall": 0.9939393939393939,
+  "macro_f1": 0.9941833508956798,
+  "weighted_f1": 0.9943133920873648
+}
