@@ -63,9 +63,30 @@ pytest
 
 These tests do not call OpenAI or Pinecone. They verify the scoring formula and the deterministic generator fallback.
 
-## Classifier bridge
+## Category classifier
 
-If feature 1 has a trained sklearn pipeline, export it with `joblib` and set:
+The API automatically loads the saved feature 1 classifier from `saved_models/`
+through `load_model.py`. By default it uses the best model recorded in
+`saved_models/metadata.json`, currently `BiLSTM`, and normalises predictions to:
+
+```text
+HR, INFORMATION-TECHNOLOGY, BUSINESS-DEVELOPMENT, FINANCE, SALES
+```
+
+To force a different saved model:
+
+```bash
+RESUME_CLASSIFIER_MODEL=TextCNN
+```
+
+If the full local DistilBERT weights are available:
+
+```bash
+RESUME_CLASSIFIER_MODEL=DistilBERT
+```
+
+If feature 1 has a separate trained sklearn pipeline, export it with `joblib`
+and set this fallback path:
 
 ```bash
 RESUME_CLASSIFIER_PATH=/absolute/path/to/category_classifier.joblib
@@ -77,4 +98,6 @@ The object must support:
 model.predict([resume_text])
 ```
 
-and return one of `HR`, `IT`, `Business-Dev`, `Finance`, or `Sales`. If no classifier path is provided, the API still works, but category bonus is only applied when the request supplies `predicted_category`.
+and return one of the supported category labels. If no saved model or fallback
+classifier is available, the API still works, but category bonus is only applied
+when the request supplies `predicted_category`.

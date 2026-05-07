@@ -1,3 +1,4 @@
 data/job_postings.json
 .env
 local.env
+saved_models/distilbert/model.safetensors

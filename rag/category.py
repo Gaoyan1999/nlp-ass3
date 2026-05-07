@@ -1,15 +1,15 @@
-"""Bridge to the existing category classifier from feature 1.
+"""Bridge to the resume category classifier from feature 1.
 
-The classifier is optional here because this repository currently does not
-contain feature 1's trained model file. If `RESUME_CLASSIFIER_PATH` points to a
-joblib object with `.predict`, this module uses it. Otherwise the API can still
-accept a manually supplied `predicted_category` for demos.
+The API first tries the saved PyTorch models in `saved_models/`. The older
+`RESUME_CLASSIFIER_PATH` joblib bridge remains as a fallback for demos or
+alternate classifiers.
 """
 
 from __future__ import annotations
 
 import os
 from functools import lru_cache
+from importlib import import_module
 from pathlib import Path
 
 import joblib
@@ -17,6 +17,20 @@ from dotenv import load_dotenv
 
 
 VALID_CATEGORIES = {"HR", "INFORMATION-TECHNOLOGY", "BUSINESS-DEVELOPMENT", "FINANCE", "SALES"}
+CATEGORY_ALIASES = {
+    "business development": "BUSINESS-DEVELOPMENT",
+    "business-development": "BUSINESS-DEVELOPMENT",
+    "business_dev": "BUSINESS-DEVELOPMENT",
+    "business-dev": "BUSINESS-DEVELOPMENT",
+    "finance": "FINANCE",
+    "fin": "FINANCE",
+    "hr": "HR",
+    "human resources": "HR",
+    "information technology": "INFORMATION-TECHNOLOGY",
+    "information-technology": "INFORMATION-TECHNOLOGY",
+    "it": "INFORMATION-TECHNOLOGY",
+    "sales": "SALES",
+}
 
 
 class CategoryPredictor:
@@ -36,13 +50,49 @@ class CategoryPredictor:
         if not self.model:
             return None
         prediction = self.model.predict([resume_text])[0]
-        category = str(prediction).strip()
-        return category if category in VALID_CATEGORIES else category
+        return normalise_category(str(prediction))
+
+
+class SavedModelCategoryPredictor:
+    def __init__(self) -> None:
+        load_dotenv()
+        self._classifier = None
+        self._load_error: Exception | None = None
+        try:
+            load_model = import_module("load_model")
+            model_dir = os.getenv("RESUME_CLASSIFIER_MODEL_DIR") or None
+            model_name = os.getenv("RESUME_CLASSIFIER_MODEL") or None
+            self._classifier = load_model.get_saved_classifier(model_dir, model_name)
+        except Exception as exc:
+            self._load_error = exc
+
+    @property
+    def available(self) -> bool:
+        return self._classifier is not None
+
+    def predict(self, resume_text: str) -> str | None:
+        if not self._classifier:
+            return None
+        prediction = self._classifier.predict(resume_text)
+        return normalise_category(prediction)
 
 
 @lru_cache(maxsize=1)
 def get_category_predictor() -> CategoryPredictor:
     return CategoryPredictor()
+
+
+@lru_cache(maxsize=1)
+def get_saved_model_predictor() -> SavedModelCategoryPredictor:
+    return SavedModelCategoryPredictor()
+
+
+def normalise_category(category: str | None) -> str | None:
+    if not category:
+        return None
+    key = " ".join(str(category).strip().replace("_", " ").split()).casefold()
+    key = key.replace("/", " ")
+    return CATEGORY_ALIASES.get(key, str(category).strip().upper())
 
 
 def resolve_resume_category(
@@ -52,7 +102,12 @@ def resolve_resume_category(
 ) -> tuple[str | None, str]:
     """Return `(category, source)` for scoring transparency."""
     if supplied_category:
-        return supplied_category, "request"
+        return normalise_category(supplied_category), "request"
+
+    saved_predictor = get_saved_model_predictor()
+    predicted = saved_predictor.predict(resume_text)
+    if predicted:
+        return predicted, "saved_model"
 
     predictor = get_category_predictor()
     predicted = predictor.predict(resume_text)

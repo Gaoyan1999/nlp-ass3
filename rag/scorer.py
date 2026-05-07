@@ -14,6 +14,20 @@ from rag.models import RetrievedJob, ScoreBreakdown, ScoredJob
 
 SEMANTIC_FLOOR = 0.25
 SEMANTIC_CEILING = 0.85
+CATEGORY_ALIASES = {
+    "business development": "business-development",
+    "business-development": "business-development",
+    "business_dev": "business-development",
+    "business-dev": "business-development",
+    "finance": "finance",
+    "fin": "finance",
+    "hr": "hr",
+    "human resources": "hr",
+    "information technology": "information-technology",
+    "information-technology": "information-technology",
+    "it": "information-technology",
+    "sales": "sales",
+}
 
 
 def normalise_skill(skill: str) -> str:
@@ -27,6 +41,12 @@ def normalise_skill(skill: str) -> str:
 
 def normalise_skill_set(skills: list[str]) -> set[str]:
     return {normalised for skill in skills if (normalised := normalise_skill(skill))}
+
+
+def normalise_category(category: str) -> str:
+    key = " ".join(category.strip().replace("_", " ").split()).casefold()
+    key = key.replace("/", " ")
+    return CATEGORY_ALIASES.get(key, key)
 
 
 def semantic_percentage(cosine_sim: float) -> float:
@@ -63,7 +83,9 @@ def score_job(
         skill_overlap_pct = 0.0
 
     category_bonus = 0.0
-    if predicted_resume_category and predicted_resume_category.casefold() == job.category.casefold():
+    predicted_category = normalise_category(predicted_resume_category) if predicted_resume_category else None
+    job_category = normalise_category(job.category)
+    if predicted_category and predicted_category == job_category:
         category_bonus = 100.0
 
     semantic_pct = semantic_percentage(job.cosine_sim)
