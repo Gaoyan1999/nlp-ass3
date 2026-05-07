@@ -1,4 +1,27 @@
-data/job_postings.json
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local environment and editor/tool state
 .env
+.env.*
+!.env.example
 local.env
+.DS_Store
+.claude/
+
+# Generated local data
+data/job_postings.json
+
+# Large local model weights. The default BiLSTM/TextCNN artifacts are tracked;
+# this DistilBERT weight file is too large for normal GitHub pushes without LFS.
 saved_models/distilbert/model.safetensors
