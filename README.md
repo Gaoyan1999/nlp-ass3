@@ -1,92 +1,179 @@
 # Resume Job RAG Matcher
 
-This project implements the second feature described in `rag_feature_plan.md`: a resume-to-job matcher using OpenAI embeddings, Pinecone retrieval, deterministic hybrid scoring, and grounded skill-gap generation.
+This project combines resume category prediction with a RAG-based job matcher. A resume is classified into one of five job categories, embedded with OpenAI, matched against indexed job descriptions in Pinecone, scored with deterministic signals, and optionally explained with an LLM.
 
-## Pipeline
+## Quick Start
 
-1. `data/load_dataset.py` loads `batuhanmtl/job-skill-set` from Hugging Face.
-2. `indexing/embed.py` embeds job text with `text-embedding-3-small`.
-3. `indexing/upsert_pinecone.py` creates/upserts a Pinecone serverless index.
-4. `rag/retriever.py` embeds a resume and retrieves top-k matching jobs.
-5. `rag/scorer.py` computes the report-friendly match percentage.
-6. `rag/generator.py` asks `gpt-4o-mini` for grounded JSON explanations.
-7. `api/main.py` exposes `POST /match` and serves `frontend/index.html`.
-
-## Setup
+From the project root:
 
 ```bash
-python -m venv .venv
+cd "/Users/daniel/UTS S2/NLP/ass3"
+pip3 install -r requirements.txt
+set -a; source local.env; set +a
+python3 -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Keep the terminal running while using the app. If the terminal process stops, the browser will no longer be able to connect.
+
+If you prefer a virtual environment:
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+set -a; source local.env; set +a
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
 
-Fill in `OPENAI_API_KEY` and `PINECONE_API_KEY` in `.env`.
+## Environment
 
-If `/match` returns `PINECONE_API_KEY is required for retrieval`, the project is still at the setup stage. Create `.env` first:
+The app needs keys for retrieval and generation. This repo uses `local.env` locally:
 
 ```bash
-cp .env.example .env
+set -a; source local.env; set +a
 ```
 
-Then edit `.env` and replace the placeholder keys with real keys. The app cannot retrieve jobs until Pinecone has both a valid API key and an indexed dataset.
+Required values:
 
-## Index the dataset
+```text
+OPENAI_API_KEY
+PINECONE_API_KEY
+PINECONE_INDEX_NAME
+PINECONE_NAMESPACE
+```
+
+Optional values:
+
+```text
+OPENAI_EMBEDDING_MODEL
+OPENAI_CHAT_MODEL
+PINECONE_CLOUD
+PINECONE_REGION
+RESUME_CLASSIFIER_MODEL
+RESUME_CLASSIFIER_MODEL_DIR
+RESUME_CLASSIFIER_PATH
+```
+
+If `/match` returns `PINECONE_API_KEY is required for retrieval`, the server was started without loading `local.env`.
+
+## Project Flow
+
+1. Offline dataset preparation:
+   `data/load_dataset.py` loads the Hugging Face `batuhanmtl/job-skill-set` dataset. Each job record includes `job_id`, `category`, `job_title`, `job_description`, and `job_skill_set`.
+
+2. Offline indexing:
+   `indexing/upsert_pinecone.py` embeds each job using `indexing/embed.py` and stores the vectors in Pinecone. Pinecone metadata keeps the job category, title, description, and skills so the app can retrieve and display grounded job details.
+
+3. Resume category prediction:
+   `rag/category.py` calls `load_model.py`, which loads the saved feature 1 classifier from `saved_models/`. By default it uses the best model recorded in `saved_models/metadata.json`, currently `BiLSTM`. The prediction is normalised to one of:
+
+```text
+HR
+INFORMATION-TECHNOLOGY
+BUSINESS-DEVELOPMENT
+FINANCE
+SALES
+```
+
+4. Retrieval:
+   `rag/retriever.py` embeds the resume and queries Pinecone for the top matching jobs. The user can optionally apply a category filter from the frontend.
+
+5. Deterministic scoring:
+   `rag/scorer.py` computes the backend match score:
+
+```text
+match_score =
+  0.5 * semantic_similarity
+  + 0.3 * skill_overlap
+  + 0.2 * category_bonus
+```
+
+The category bonus is `100` when the predicted resume category matches the job category, otherwise `0`. This is the bridge between the classification feature and the RAG matcher.
+
+6. Explanation and skill gaps:
+   `rag/generator.py` asks the configured OpenAI chat model to produce grounded explanations and skill-gap suggestions. If LLM generation is disabled or fails, the app falls back to deterministic explanations from the backend scores.
+
+7. API and frontend:
+   `api/main.py` exposes `POST /match`, `POST /match-pdf`, `/categories`, and `/health`. It also serves `frontend/index.html`, where users paste a resume, upload a PDF, choose filters, run matching, see the predicted resume category, and inspect job matches.
+
+## API Endpoints
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+List supported categories:
+
+```bash
+curl http://127.0.0.1:8000/categories
+```
+
+Run a text resume match:
+
+```bash
+curl -X POST http://127.0.0.1:8000/match \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resume_text": "Software engineer with Python, SQL, React, cloud APIs, and database design experience.",
+    "top_k": 5,
+    "category_filter": null,
+    "predicted_category": null,
+    "use_llm": false
+  }'
+```
+
+## Index the Dataset
+
+Only needed if Pinecone has not already been populated.
 
 For a tiny test index:
 
 ```bash
-python -m indexing.upsert_pinecone --limit 20
+set -a; source local.env; set +a
+python3 -m indexing.upsert_pinecone --limit 20
 ```
 
 For the full dataset:
 
 ```bash
-python -m indexing.upsert_pinecone
+set -a; source local.env; set +a
+python3 -m indexing.upsert_pinecone
 ```
 
-The index stores one vector per job, with metadata for category filtering and RAG prompts.
+## Category Classifier
 
-## Run the app
-
-```bash
-uvicorn api.main:app --reload
-```
-
-Open `http://127.0.0.1:8000`.
-
-## Test deterministic logic
-
-```bash
-pytest
-```
-
-These tests do not call OpenAI or Pinecone. They verify the scoring formula and the deterministic generator fallback.
-
-## Category classifier
-
-The API automatically loads the saved feature 1 classifier from `saved_models/`
-through `load_model.py`. By default it uses the best model recorded in
-`saved_models/metadata.json`, currently `BiLSTM`, and normalises predictions to:
+The saved classifier artifacts live in `saved_models/`. The default path uses:
 
 ```text
-HR, INFORMATION-TECHNOLOGY, BUSINESS-DEVELOPMENT, FINANCE, SALES
+saved_models/bilstm.pt
+saved_models/vocab.pkl
+saved_models/label_encoder.pkl
+saved_models/metadata.json
 ```
 
-To force a different saved model:
+To force TextCNN:
 
 ```bash
 RESUME_CLASSIFIER_MODEL=TextCNN
 ```
 
-If the full local `saved_models/distilbert/` directory is available:
+If the full local `saved_models/distilbert/` directory is available, DistilBERT can be used locally:
 
 ```bash
 RESUME_CLASSIFIER_MODEL=DistilBERT
 ```
 
-If feature 1 has a separate trained sklearn pipeline, export it with `joblib`
-and set this fallback path:
+DistilBERT files are ignored by Git because they are large optional artifacts. The default BiLSTM/TextCNN models are enough for this app.
+
+If a separate sklearn classifier is available, it can be used as a fallback:
 
 ```bash
 RESUME_CLASSIFIER_PATH=/absolute/path/to/category_classifier.joblib
@@ -98,6 +185,22 @@ The object must support:
 model.predict([resume_text])
 ```
 
-and return one of the supported category labels. If no saved model or fallback
-classifier is available, the API still works, but category bonus is only applied
-when the request supplies `predicted_category`.
+## Tests
+
+Run:
+
+```bash
+python3 -m pytest
+```
+
+The tests do not call OpenAI or Pinecone. They cover category normalisation, scoring, and deterministic generator fallback.
+
+## Report Notes
+
+For the report, describe the system as a two-feature integration:
+
+- Feature 1 predicts the resume's job category using a saved classifier.
+- Feature 2 retrieves semantically similar jobs from Pinecone using OpenAI embeddings.
+- The final score combines semantic similarity, explicit skill overlap, and category agreement.
+- The frontend shows both the predicted resume category and each job's score breakdown, making the result explainable instead of only showing a final percentage.
+- The LLM is used only for narrative explanations and skill-gap wording; the numeric score is computed deterministically in Python.

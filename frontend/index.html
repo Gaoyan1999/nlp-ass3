@@ -168,6 +168,37 @@
         text-align: right;
       }
 
+      .resume-category-card {
+        display: grid;
+        grid-template-columns: minmax(180px, 1.25fr) repeat(2, minmax(120px, 0.75fr));
+        gap: 12px;
+        margin-bottom: 14px;
+        border: 1px solid #a7d8d2;
+        border-radius: 8px;
+        background: #eef8f6;
+        padding: 14px;
+      }
+
+      .category-summary-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .category-summary-value {
+        margin-top: 4px;
+        color: var(--accent-dark);
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .category-summary-meta {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       .match {
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -375,6 +406,10 @@
         .breakdown {
           grid-template-columns: 1fr;
         }
+
+        .resume-category-card {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -547,7 +582,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
       function render(data) {
         currentMatches = data.matches || [];
         const source = data.category_source === "unavailable" ? "no classifier" : data.category_source;
-        statusEl.textContent = `Category: ${data.predicted_category || "none"} (${source})`;
+        statusEl.textContent = `${currentMatches.length} matches`;
         const gaps = data.generation.skill_gaps || [];
         const matches = currentMatches;
         const explanationById = new Map(
@@ -556,6 +591,7 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
 
         results.className = "";
         results.innerHTML = `
+          ${renderResumeCategorySummary(data, source)}
           ${data.generation.notes ? `<div class="error">${escapeHtml(data.generation.notes)}</div>` : ""}
           <div class="gap-list">
             ${gaps
@@ -571,6 +607,28 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
               .join("")}
           </div>
           ${matches.map((item, index) => renderMatch(item, explanationById.get(String(item.job.job_id)), index)).join("")}
+        `;
+      }
+
+      function renderResumeCategorySummary(data, source) {
+        const predictedCategory = data.predicted_category || "Not predicted";
+        const retrievalFilter = data.retrieval_category_filter || "Any category";
+        return `
+          <div class="resume-category-card" aria-label="Resume category prediction">
+            <div>
+              <div class="category-summary-label">Predicted resume category</div>
+              <div class="category-summary-value">${escapeHtml(formatCategoryLabel(predictedCategory))}</div>
+              <div class="category-summary-meta">${escapeHtml(predictedCategory)}</div>
+            </div>
+            <div>
+              <div class="category-summary-label">Prediction source</div>
+              <div class="category-summary-value">${escapeHtml(formatCategorySource(source))}</div>
+            </div>
+            <div>
+              <div class="category-summary-label">Retrieval filter</div>
+              <div class="category-summary-value">${escapeHtml(formatCategoryLabel(retrievalFilter))}</div>
+            </div>
+          </div>
         `;
       }
 
@@ -723,6 +781,32 @@ Data analyst with experience in Python, SQL, pandas, dashboard reporting, stakeh
           /\b(sql|bi|dax|c#|vba|api|apis|ui|ux|it|ai|ml|llm|llms|hr|aws|s3|nosql|json|xml|html|css|etl|tfl)\b/gi,
           (match) => match.toUpperCase()
         );
+      }
+
+      function formatCategoryLabel(category) {
+        const value = String(category || "").trim();
+        if (!value) {
+          return "None";
+        }
+        if (value === "Any category" || value === "Not predicted") {
+          return value;
+        }
+        return value
+          .replaceAll("-", " ")
+          .toLowerCase()
+          .replace(/\b\w/g, (letter) => letter.toUpperCase())
+          .replace(/\bHr\b/g, "HR");
+      }
+
+      function formatCategorySource(source) {
+        const labels = {
+          saved_model: "Saved model",
+          classifier: "Fallback classifier",
+          request: "Manual override",
+          "no classifier": "Unavailable",
+          unavailable: "Unavailable",
+        };
+        return labels[source] || source || "Unavailable";
       }
 
       function escapeHtml(value) {
